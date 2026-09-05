@@ -1,0 +1,610 @@
+{
+  "info": {
+    "_postman_id": "expenses-note-backend-v1",
+    "name": "Expenses Note Backend API",
+    "description": "Koleksi Postman lengkap untuk Expenses Note Backend API.\n\n## Setup\n1. Import koleksi ini ke Postman\n2. Buat Environment baru dengan variabel:\n   - `BASE_URL` = `https://expenses-project-backend-git-main-fadli-webs-projects.vercel.app` (production) atau `http://localhost:3000` (local)\n   - `ACCESS_TOKEN` = (diisi otomatis setelah login)\n   - `REFRESH_TOKEN` = (diisi otomatis setelah login)\n\n## Cara Pakai\n1. Jalankan **Register** atau **Login** terlebih dahulu\n2. `ACCESS_TOKEN` dan `REFRESH_TOKEN` akan diset otomatis via Postman Scripts\n3. Semua endpoint lain sudah menggunakan Bearer Token otomatis",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "https://expenses-project-backend-git-main-fadli-webs-projects.vercel.app",
+      "type": "string"
+    },
+    {
+      "key": "ACCESS_TOKEN",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "REFRESH_TOKEN",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{ACCESS_TOKEN}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "🏥 Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/health",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "health"]
+            },
+            "description": "Cek status server dan koneksi database Supabase. Juga berfungsi sebagai keep-alive ping."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔐 Auth",
+      "item": [
+        {
+          "name": "Register",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.session && res.session.access_token) {",
+                  "  pm.collectionVariables.set('ACCESS_TOKEN', res.session.access_token);",
+                  "  pm.collectionVariables.set('REFRESH_TOKEN', res.session.refresh_token);",
+                  "  console.log('✅ Token saved from Register');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"password123\",\n  \"full_name\": \"User Test\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/auth/register",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "auth", "register"]
+            },
+            "description": "Daftar akun baru menggunakan email dan password. `full_name` opsional."
+          },
+          "response": []
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.session && res.session.access_token) {",
+                  "  pm.collectionVariables.set('ACCESS_TOKEN', res.session.access_token);",
+                  "  pm.collectionVariables.set('REFRESH_TOKEN', res.session.refresh_token);",
+                  "  console.log('✅ Token saved from Login:', res.user.email);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"password123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/auth/login",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Login dengan email & password. Access token dan refresh token disimpan otomatis ke variabel koleksi."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Current User (Me)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/auth/me",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "auth", "me"]
+            },
+            "description": "Mendapatkan info user yang sedang login, termasuk data profil dari tabel profiles."
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.session && res.session.access_token) {",
+                  "  pm.collectionVariables.set('ACCESS_TOKEN', res.session.access_token);",
+                  "  pm.collectionVariables.set('REFRESH_TOKEN', res.session.refresh_token);",
+                  "  console.log('✅ Token refreshed');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{REFRESH_TOKEN}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/auth/refresh",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "auth", "refresh"]
+            },
+            "description": "Refresh access token menggunakan refresh token. Gunakan saat access token kadaluwarsa."
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('ACCESS_TOKEN', '');",
+                  "pm.collectionVariables.set('REFRESH_TOKEN', '');",
+                  "console.log('✅ Tokens cleared after logout');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/auth/logout",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "auth", "logout"]
+            },
+            "description": "Logout dan invalidate session aktif."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "👤 Profile",
+      "item": [
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/profile",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "profile"]
+            },
+            "description": "Mengambil data profil user: nama lengkap, email, dan avatar URL."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Profile (Nama & Email)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Nama Baru Saya\",\n  \"email\": \"email-baru@example.com\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/profile",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "profile"]
+            },
+            "description": "Mengupdate nama lengkap dan/atau email. Perubahan email akan mengirim email konfirmasi ke alamat baru."
+          },
+          "response": []
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"password-lama\",\n  \"new_password\": \"password-baru-minimal-8\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/profile/password",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "profile", "password"]
+            },
+            "description": "Mengganti password dengan verifikasi password lama terlebih dahulu. Password baru minimal 8 karakter."
+          },
+          "response": []
+        },
+        {
+          "name": "Upload Avatar (Form Data)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "avatar",
+                  "type": "file",
+                  "src": [],
+                  "description": "File gambar profil (JPEG/PNG/WebP, maks 5MB)"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/profile/avatar",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "profile", "avatar"]
+            },
+            "description": "Upload foto profil baru. Field name harus `avatar`. Mendukung JPEG, PNG, WebP (maks 5MB). Foto lama otomatis dihapus dari storage."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🧾 Receipts",
+      "item": [
+        {
+          "name": "Scan Receipt (AI OCR)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"image_base64\": \"data:image/jpeg;base64,/9j/4AAQSkZJRgAB...\",\n  \"media_type\": \"image/jpeg\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/receipts/scan",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "receipts", "scan"]
+            },
+            "description": "Kirim gambar struk dalam format base64, AI Gemini Vision akan membalas dengan data:\n- `merchant` - nama toko\n- `amount` - total transaksi\n- `transaction_date` - tanggal (YYYY-MM-DD)\n- `category` - kategori belanja\n- `items` - daftar item belanja\n- `confidence` - tingkat keyakinan AI (0-1)\n\nEndpoint ini TIDAK menyimpan data ke database. Gunakan sebagai pratinjau sebelum konfirmasi."
+          },
+          "response": []
+        },
+        {
+          "name": "Upload Receipt Image",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "receipt",
+                  "type": "file",
+                  "src": [],
+                  "description": "File gambar struk (JPEG/PNG/WebP, maks 5MB)"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/receipts/upload",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "receipts", "upload"]
+            },
+            "description": "Upload file gambar struk ke Supabase Storage (privat). Mengembalikan `receipt_path` (untuk disimpan bersama transaksi) dan `receipt_url` (Signed URL berlaku 1 jam untuk pratinjau)."
+          },
+          "response": []
+        },
+        {
+          "name": "Gallery - Daftar Struk Tersimpan",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/receipts/gallery?page=1&limit=20",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "receipts", "gallery"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "category", "value": "", "disabled": true },
+                { "key": "search", "value": "", "disabled": true },
+                { "key": "start_date", "value": "", "disabled": true, "description": "Format: YYYY-MM-DD" },
+                { "key": "end_date", "value": "", "disabled": true, "description": "Format: YYYY-MM-DD" }
+              ]
+            },
+            "description": "Digital Receipt Vault - Galeri arsip semua struk yang sudah diunggah. Setiap foto dilengkapi Signed URL aman (berlaku 1 jam). Mendukung filter kategori, pencarian nama toko, rentang tanggal, dan pagination."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "💸 Transactions",
+      "item": [
+        {
+          "name": "List Transactions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/transactions?page=1&limit=20",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "transactions"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "start_date", "value": "", "disabled": true, "description": "Format: YYYY-MM-DD" },
+                { "key": "end_date", "value": "", "disabled": true, "description": "Format: YYYY-MM-DD" },
+                { "key": "category", "value": "", "disabled": true, "description": "Contoh: Makanan & Minuman" },
+                { "key": "payment_method", "value": "", "disabled": true, "description": "Contoh: Cash, Transfer" },
+                { "key": "search", "value": "", "disabled": true, "description": "Cari nama toko" }
+              ]
+            },
+            "description": "Daftar semua transaksi user yang sedang login. Mendukung:\n- Pagination (`page`, `limit` maks 100)\n- Filter tanggal (`start_date`, `end_date`)\n- Filter kategori (`category`)\n- Filter metode pembayaran (`payment_method`)\n- Pencarian nama toko (`search`)\n\nStruk foto dikembalikan sebagai Signed URL aman."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Transaction (Manual)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"merchant\": \"Indomaret\",\n  \"amount\": 45000,\n  \"category\": \"Belanja Harian\",\n  \"payment_method\": \"Cash\",\n  \"transaction_date\": \"2026-09-06\",\n  \"notes\": \"Beli snack dan minuman\",\n  \"items\": [\n    { \"name\": \"Chitato\", \"qty\": 1, \"price\": 15000 },\n    { \"name\": \"Teh Botol\", \"qty\": 2, \"price\": 15000 }\n  ],\n  \"receipt_path\": null\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/transactions",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "transactions"]
+            },
+            "description": "Membuat transaksi baru secara manual (tanpa struk). `merchant` dan `amount` wajib diisi. `receipt_path` diisi jika sudah melakukan upload struk sebelumnya via `/api/receipts/upload`.\n\nKategori yang tersedia:\n- Belanja Harian\n- Transportasi\n- Makanan & Minuman\n- Tagihan & Utilitas\n- Kesehatan\n- Hiburan\n- Pendidikan\n- Belanja Online\n- Lainnya"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Transaction (dari Scan AI)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"merchant\": \"SPBU Pertamina\",\n  \"amount\": 100000,\n  \"category\": \"Transportasi\",\n  \"payment_method\": \"Debit\",\n  \"transaction_date\": \"2026-09-06\",\n  \"notes\": \"Isi bensin pertalite\",\n  \"items\": [\n    { \"name\": \"Pertalite\", \"qty\": 5.55, \"price\": 18000 }\n  ],\n  \"receipt_path\": \"user-uuid/1234567890-abc123.jpg\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/transactions",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "transactions"]
+            },
+            "description": "Simpan transaksi yang datanya sudah diisi otomatis oleh AI Scan. Isi `receipt_path` dengan nilai yang dikembalikan oleh `/api/receipts/upload`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Transaction Detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/transactions/:id",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "transactions", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "uuid-transaksi-di-sini",
+                  "description": "UUID transaksi"
+                }
+              ]
+            },
+            "description": "Mendapatkan detail satu transaksi berdasarkan ID. Termasuk Signed URL foto struk jika ada."
+          },
+          "response": []
+        },
+        {
+          "name": "Edit Transaction",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"merchant\": \"Nama Toko Diperbaiki\",\n  \"amount\": 55000,\n  \"category\": \"Makanan & Minuman\",\n  \"payment_method\": \"Transfer\",\n  \"transaction_date\": \"2026-09-06\",\n  \"notes\": \"Catatan diperbarui\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/transactions/:id",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "transactions", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "uuid-transaksi-di-sini",
+                  "description": "UUID transaksi"
+                }
+              ]
+            },
+            "description": "Mengedit data transaksi yang sudah tersimpan. Field yang tidak disertakan tidak akan berubah.\n\nField yang dapat diedit:\n- `merchant`, `amount`, `category`, `payment_method`, `transaction_date`, `notes`, `items`"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Transaction",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/transactions/:id",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "transactions", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "uuid-transaksi-di-sini",
+                  "description": "UUID transaksi"
+                }
+              ]
+            },
+            "description": "Menghapus transaksi. Otomatis menghapus juga file foto struk terkait dari Supabase Storage agar tidak membuang kuota."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📊 Dashboard",
+      "item": [
+        {
+          "name": "Get Dashboard Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/dashboard/summary",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "dashboard", "summary"]
+            },
+            "description": "Mendapatkan semua data yang diperlukan halaman dashboard dalam satu request:\n\n- `total_this_month` - Total pengeluaran bulan ini\n- `total_last_month` - Total pengeluaran bulan lalu\n- `percent_change_vs_last_month` - Persentase naik/turun\n- `average_daily_this_month` - Rata-rata harian\n- `top_merchants` - 5 merchant dengan belanja terbanyak\n- `category_breakdown` - Sebaran per kategori (untuk Donut/Pie Chart)\n- `daily_trend` - Data harian (untuk Bar/Area Chart)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📥 Export",
+      "item": [
+        {
+          "name": "Export CSV - Bulan Ini",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/export/csv?period=this_month",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "export", "csv"],
+              "query": [
+                { "key": "period", "value": "this_month" }
+              ]
+            },
+            "description": "Unduh transaksi bulan ini dalam format CSV siap buka di Excel."
+          },
+          "response": []
+        },
+        {
+          "name": "Export CSV - Bulan Lalu",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/export/csv?period=last_month",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "export", "csv"],
+              "query": [
+                { "key": "period", "value": "last_month" }
+              ]
+            },
+            "description": "Unduh transaksi bulan lalu dalam format CSV."
+          },
+          "response": []
+        },
+        {
+          "name": "Export CSV - Tahun Ini",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/export/csv?period=this_year",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "export", "csv"],
+              "query": [
+                { "key": "period", "value": "this_year" }
+              ]
+            },
+            "description": "Unduh semua transaksi tahun ini dalam format CSV."
+          },
+          "response": []
+        },
+        {
+          "name": "Export CSV - Rentang Tanggal Kustom",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/export/csv?period=custom&start=2026-08-01&end=2026-08-31",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "export", "csv"],
+              "query": [
+                { "key": "period", "value": "custom" },
+                { "key": "start", "value": "2026-08-01", "description": "Format: YYYY-MM-DD" },
+                { "key": "end", "value": "2026-08-31", "description": "Format: YYYY-MM-DD" }
+              ]
+            },
+            "description": "Unduh transaksi dalam rentang tanggal kustom. Wajib isi `start` dan `end` saat `period=custom`."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
