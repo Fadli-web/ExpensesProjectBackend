@@ -1,8 +1,11 @@
+import bcrypt from 'bcryptjs';
 import { applyCors } from '../../lib/cors.js';
-import { createClient } from '@supabase/supabase-js';
+import { connectToDatabase } from '../../lib/db.js';
+import { signToken } from '../../lib/auth.js';
+import User from '../../lib/models/User.js';
 
 // POST /api/auth/register
-// Body: { "email": "...", "password": "..." }
+// Body: { name, email, password }
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
 
@@ -11,35 +14,49 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { email, password } = req.body || {};
-  if (!email || !password) {
-    return res.status(400).json({ error: 'email dan password wajib diisi' });
-  }
-
   try {
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+    const { name, email, password } = req.body || {};
 
-    if (!supabaseUrl || !supabaseKey) {
-      return res.status(500).json({ error: 'SUPABASE_URL atau SUPABASE_ANON_KEY belum di-set di environment variables' });
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'Nama, email, dan password wajib diisi' });
     }
 
-    const supabase = createClient(supabaseUrl, supabaseKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password minimal 6 karakter' });
+    }
+
+    await connectToDatabase();
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const existingUser = await User.findOne({ email: normalizedEmail });
+    if (existingUser) {
+      return res.status(400).json({ error: 'Email sudah terdaftar. Silakan login.' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const newUser = await User.create({
+      name: name.trim(),
+      email: normalizedEmail,
+      password: hashedPassword,
     });
 
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) {
-      return res.status(400).json({ error: error.message });
-    }
+    const token = signToken(newUser);
 
-    return res.status(200).json({
+    return res.status(201).json({
+      success: true,
       message: 'Registrasi berhasil',
-      user: data.user,
-      session: data.session,
-      access_token: data.session?.access_token || null,
+      user: {
+        id: newUser._id,
+        name: newUser.name,
+        email: newUser.email,
+        avatar: newUser.avatar,
+        createdAt: newUser.createdAt,
+      },
+      token,
     });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: 'Terjadi kesalahan server: ' + err.message });
   }
 }

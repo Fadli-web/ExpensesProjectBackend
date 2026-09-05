@@ -1,17 +1,22 @@
-import { randomUUID } from 'crypto';
 import { applyCors } from '../../lib/cors.js';
 import { requireUser } from '../../lib/auth.js';
 
-export const config = { api: { bodyParser: { sizeLimit: '5mb' } } };
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '5mb',
+    },
+  },
+};
 
 // POST /api/receipts/upload
-// body: { image_base64, media_type? } -> menyimpan ke bucket privat "receipts/{user_id}/..."
-// dan mengembalikan path + signed URL sementara untuk preview.
+// body: { image_base64, media_type? }
+// Memformat dan mengembalikan data image struk yang siap disimpan ke field receipt_image saat membuat transaksi.
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
-  const ctx = await requireUser(req, res);
-  if (!ctx) return;
-  const { supabase, user } = ctx;
+
+  const auth = await requireUser(req, res);
+  if (!auth) return;
 
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST, OPTIONS');
@@ -19,25 +24,24 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { image_base64, media_type } = req.body || {};
-    if (!image_base64) return res.status(400).json({ error: 'image_base64 wajib diisi' });
+    const { image_base64, media_type = 'image/jpeg' } = req.body || {};
+    if (!image_base64) {
+      return res.status(400).json({ error: 'image_base64 wajib diisi' });
+    }
 
-    const ext = (media_type || 'image/jpeg').includes('png') ? 'png' : 'jpg';
-    const path = `${user.id}/${randomUUID()}.${ext}`;
-    const buffer = Buffer.from(image_base64, 'base64');
+    let formattedImage = image_base64;
+    if (!formattedImage.startsWith('data:image/')) {
+      formattedImage = `data:${media_type};base64,${image_base64}`;
+    }
 
-    const { error: uploadError } = await supabase.storage
-      .from('receipts')
-      .upload(path, buffer, { contentType: media_type || 'image/jpeg', upsert: false });
-    if (uploadError) throw uploadError;
-
-    const { data: signed, error: signError } = await supabase
-      .storage.from('receipts')
-      .createSignedUrl(path, 300);
-    if (signError) throw signError;
-
-    return res.status(201).json({ data: { path, signed_url: signed.signedUrl } });
+    return res.status(200).json({
+      success: true,
+      message: 'Foto struk siap digunakan',
+      data: {
+        receipt_image: formattedImage,
+      },
+    });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: 'Gagal memproses gambar: ' + err.message });
   }
 }

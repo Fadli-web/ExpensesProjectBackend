@@ -1,12 +1,15 @@
 import { applyCors } from '../../lib/cors.js';
 import { requireUser } from '../../lib/auth.js';
+import { connectToDatabase } from '../../lib/db.js';
+import Transaction from '../../lib/models/Transaction.js';
 
 // GET /api/dashboard/trend?year=2026&month=9  (default: bulan berjalan)
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
-  const ctx = await requireUser(req, res);
-  if (!ctx) return;
-  const { supabase } = ctx;
+
+  const auth = await requireUser(req, res);
+  if (!auth) return;
+  const { user } = auth;
 
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET, OPTIONS');
@@ -24,12 +27,12 @@ export default async function handler(req, res) {
     const startISO = start.toISOString().slice(0, 10);
     const endISO = end.toISOString().slice(0, 10);
 
-    const { data, error } = await supabase
-      .from('transactions')
-      .select('transaction_date, amount')
-      .gte('transaction_date', startISO)
-      .lte('transaction_date', endISO);
-    if (error) throw error;
+    await connectToDatabase();
+
+    const data = await Transaction.find({
+      user_id: user._id,
+      transaction_date: { $gte: startISO, $lte: endISO },
+    }).select('transaction_date amount').lean();
 
     const daysInMonth = end.getDate();
     const monthPrefix = startISO.slice(0, 8); // "YYYY-MM-"
@@ -46,6 +49,6 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ data: series });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: 'Gagal memuat tren transaksi: ' + err.message });
   }
 }

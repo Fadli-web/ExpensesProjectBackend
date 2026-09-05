@@ -1,8 +1,8 @@
 {
   "info": {
-    "_postman_id": "a3e9c5f1-28b9-4d2b-9e4a-7b3e1c8d4f6a",
-    "name": "Expense Tracker API",
-    "description": "Koleksi Postman lengkap untuk Backend Expense Tracker (Pencatatan Keuangan Pribadi) dengan AI Receipt Scanner (Google Gemini), Supabase Auth & Storage, Dashboard Analitik, dan Ekspor CSV.",
+    "_postman_id": "e4d7b2c9-9a1b-4f5c-8d3e-7a6b5c4d3e2f",
+    "name": "Expense Tracker API (Native MongoDB & JWT)",
+    "description": "Koleksi Postman Backend Expense Tracker dengan Native JWT Auth, Manajemen Profil Pengguna (Edit Nama, Ganti Password, Upload Avatar), AI Receipt Scanner Gemini, Dashboard Analitik, dan Ekspor CSV.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -10,43 +10,19 @@
       "key": "base_url",
       "value": "https://expenses-note-backend.vercel.app",
       "type": "string",
-      "description": "Base URL server backend (misal: http://localhost:3000 atau https://your-project.vercel.app)"
+      "description": "URL backend server (gunakan https://expenses-note-backend.vercel.app atau http://localhost:3000)"
     },
     {
-      "key": "supabase_url",
-      "value": "https://pfkhbsdxhpfbzxiboiep.supabase.co",
-      "type": "string",
-      "description": "URL project Supabase kamu"
-    },
-    {
-      "key": "supabase_anon_key",
-      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBma2hic2R4aHBmYnp4aWJvaWVwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MDk1OTIsImV4cCI6MjEwNDE4NTU5Mn0.ggJcl_1GJWNZ4xj09f5vYhKj1_1Sw25N-r7qXoLYMm0",
-      "type": "string",
-      "description": "Supabase Public Anon Key"
-    },
-    {
-      "key": "supabase_token",
+      "key": "token",
       "value": "",
       "type": "string",
-      "description": "Bearer access token JWT pengguna (otomatis terisi setelah menjalankan request Login)"
-    },
-    {
-      "key": "keep_alive_secret",
-      "value": "ganti-dengan-string-acak-yang-panjang",
-      "type": "string",
-      "description": "Secret key untuk endpoint /api/keep-alive"
+      "description": "JWT Bearer Token (otomatis terisi setelah request Register atau Login)"
     },
     {
       "key": "transaction_id",
       "value": "",
       "type": "string",
       "description": "ID Transaksi aktif (otomatis terisi saat membuat transaksi baru)"
-    },
-    {
-      "key": "receipt_path",
-      "value": "",
-      "type": "string",
-      "description": "Path file struk di Storage (otomatis terisi saat upload struk)"
     }
   ],
   "auth": {
@@ -54,18 +30,18 @@
     "bearer": [
       {
         "key": "token",
-        "value": "{{supabase_token}}",
+        "value": "{{token}}",
         "type": "string"
       }
     ]
   },
   "item": [
     {
-      "name": "0. Supabase Auth (Helper)",
-      "description": "Endpoint pembantu langsung ke Supabase Auth untuk mendaftar akun dan login guna mendapatkan token Bearer JWT secara otomatis.",
+      "name": "1. Autentikasi (Native Auth)",
+      "description": "Endpoint registrasi dan login native (bebas dari Supabase) dengan password hashing bcrypt dan token JWT.",
       "item": [
         {
-          "name": "Register User Baru (via Backend)",
+          "name": "Register User Baru",
           "request": {
             "auth": {
               "type": "noauth"
@@ -80,7 +56,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"faddli@gmail.com\",\n  \"password\": \"password123\"\n}",
+              "raw": "{\n  \"name\": \"Mohammad Fadli\",\n  \"email\": \"fadli@gmail.com\",\n  \"password\": \"password123\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -98,18 +74,18 @@
                 "register"
               ]
             },
-            "description": "Daftar user baru langsung lewat endpoint backend /api/auth/register."
+            "description": "Mendaftarkan user baru dengan nama, email, dan password."
           },
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "if (pm.response.code === 200) {",
-                  "    var data = pm.response.json();",
-                  "    if (data.access_token) {",
-                  "        pm.collectionVariables.set('supabase_token', data.access_token);",
-                  "        console.log('Token otomatis tersimpan!');",
+                  "if (pm.response.code === 201) {",
+                  "    var res = pm.response.json();",
+                  "    if (res.token) {",
+                  "        pm.collectionVariables.set('token', res.token);",
+                  "        console.log('Token JWT otomatis tersimpan ke {{token}}!');",
                   "    }",
                   "}"
                 ],
@@ -119,7 +95,7 @@
           ]
         },
         {
-          "name": "Login / Sign In (via Backend)",
+          "name": "Login / Masuk",
           "request": {
             "auth": {
               "type": "noauth"
@@ -134,7 +110,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"faddli@gmail.com\",\n  \"password\": \"password123\"\n}",
+              "raw": "{\n  \"email\": \"fadli@gmail.com\",\n  \"password\": \"password123\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -152,7 +128,7 @@
                 "login"
               ]
             },
-            "description": "Login langsung ke backend /api/auth/login. Script test otomatis menyimpan access_token ke variable {{supabase_token}}."
+            "description": "Login dengan email & password. Script otomatis menyimpan JWT token ke variabel {{token}}."
           },
           "event": [
             {
@@ -160,10 +136,10 @@
               "script": {
                 "exec": [
                   "if (pm.response.code === 200) {",
-                  "    var data = pm.response.json();",
-                  "    if (data.access_token) {",
-                  "        pm.collectionVariables.set('supabase_token', data.access_token);",
-                  "        console.log('Access token berhasil disimpan ke variable supabase_token!');",
+                  "    var res = pm.response.json();",
+                  "    if (res.token) {",
+                  "        pm.collectionVariables.set('token', res.token);",
+                  "        console.log('Token JWT otomatis tersimpan ke {{token}}!');",
                   "    }",
                   "}"
                 ],
@@ -171,62 +147,36 @@
               }
             }
           ]
-        },
+        }
+      ]
+    },
+    {
+      "name": "2. Profil Pengguna (User Profile)",
+      "description": "Fitur baru untuk melihat profil, mengedit nama, mengubah password, dan mengunggah foto profil (avatar).",
+      "item": [
         {
-          "name": "Register User Baru (Direct ke Supabase)",
+          "name": "Lihat Profil Saya",
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "POST",
-            "header": [
-              {
-                "key": "apikey",
-                "value": "{{supabase_anon_key}}",
-                "type": "text"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json",
-                "type": "text"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"faddli@gmail.com\",\n  \"password\": \"password123\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
+            "method": "GET",
             "url": {
-              "raw": "{{supabase_url}}/auth/v1/signup",
+              "raw": "{{base_url}}/api/user/profile",
               "host": [
-                "{{supabase_url}}"
+                "{{base_url}}"
               ],
               "path": [
-                "auth",
-                "v1",
-                "signup"
+                "api",
+                "user",
+                "profile"
               ]
             },
-            "description": "Register langsung ke API Supabase Auth."
+            "description": "Mengambil data profil pengguna yang sedang login (ID, nama, email, avatar, tanggal dibuat)."
           }
         },
         {
-          "name": "Login / Sign In (Direct ke Supabase)",
+          "name": "Edit Nama Profil",
           "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "POST",
+            "method": "PUT",
             "header": [
-              {
-                "key": "apikey",
-                "value": "{{supabase_anon_key}}",
-                "type": "text"
-              },
               {
                 "key": "Content-Type",
                 "value": "application/json",
@@ -235,7 +185,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"faddli@gmail.com\",\n  \"password\": \"password123\"\n}",
+              "raw": "{\n  \"name\": \"Mohammad Fadli - Update\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -243,33 +193,95 @@
               }
             },
             "url": {
-              "raw": "{{supabase_url}}/auth/v1/token?grant_type=password",
+              "raw": "{{base_url}}/api/user/profile",
               "host": [
-                "{{supabase_url}}"
+                "{{base_url}}"
               ],
               "path": [
-                "auth",
-                "v1",
-                "token"
-              ],
-              "query": [
-                {
-                  "key": "grant_type",
-                  "value": "password"
-                }
+                "api",
+                "user",
+                "profile"
               ]
             },
-            "description": "Login langsung ke API Supabase Auth."
+            "description": "Mengubah nama pengguna."
+          }
+        },
+        {
+          "name": "Ganti Password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"password123\",\n  \"new_password\": \"newpassword123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/user/password",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "user",
+                "password"
+              ]
+            },
+            "description": "Mengganti password akun dengan memvalidasi password lama terlebih dahulu."
+          }
+        },
+        {
+          "name": "Upload Foto Profil (Avatar)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"image_base64\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/user/avatar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "user",
+                "avatar"
+              ]
+            },
+            "description": "Mengunggah foto profil (Base64 data URL). Foto akan tersimpan permanen di profil user."
           }
         }
       ]
     },
     {
-      "name": "1. Transaksi (Transactions)",
-      "description": "Manajemen pencatatan keuangan (CRUD transaksi) yang terisolasi per-user via Row Level Security (RLS).",
+      "name": "3. Transaksi (Transactions)",
+      "description": "CRUD Transaksi Keuangan mandiri dengan MongoDB.",
       "item": [
         {
-          "name": "List Transaksi (Filter & Pagination)",
+          "name": "Daftar Transaksi (Filter & Pagination)",
           "request": {
             "method": "GET",
             "url": {
@@ -285,50 +297,49 @@
                 {
                   "key": "page",
                   "value": "1",
-                  "description": "Nomor halaman (default: 1)"
+                  "description": "Nomor halaman"
                 },
                 {
                   "key": "page_size",
                   "value": "20",
-                  "description": "Jumlah baris per halaman (maks 100, default: 20)"
+                  "description": "Jumlah per halaman"
                 },
                 {
                   "key": "from",
                   "value": "2026-09-01",
-                  "description": "Filter tanggal mulai (YYYY-MM-DD)",
+                  "description": "Tanggal mulai (YYYY-MM-DD)",
                   "disabled": true
                 },
                 {
                   "key": "to",
                   "value": "2026-09-30",
-                  "description": "Filter tanggal akhir (YYYY-MM-DD)",
+                  "description": "Tanggal akhir (YYYY-MM-DD)",
                   "disabled": true
                 },
                 {
                   "key": "category",
-                  "value": "Belanja Harian",
-                  "description": "Filter berdasarkan kategori (Makanan & Minuman, Belanja Harian, Transportasi, Kesehatan, Hiburan, Tagihan, Lainnya)",
+                  "value": "Makanan & Minuman",
+                  "description": "Filter kategori",
                   "disabled": true
                 },
                 {
                   "key": "payment_method",
                   "value": "QRIS",
-                  "description": "Filter metode pembayaran (QRIS, Tunai, Transfer, Kartu Debit, Kartu Kredit)",
+                  "description": "Filter metode bayar",
                   "disabled": true
                 },
                 {
                   "key": "q",
-                  "value": "Indomaret",
-                  "description": "Pencarian merchant (case-insensitive substring)",
+                  "value": "Kopi",
+                  "description": "Pencarian nama merchant",
                   "disabled": true
                 }
               ]
-            },
-            "description": "Mengambil daftar riwayat transaksi pengguna dengan filter tanggal, kategori, metode bayar, nama toko, dan paginasi."
+            }
           }
         },
         {
-          "name": "Tambah Transaksi Baru (Create)",
+          "name": "Tambah Transaksi Baru",
           "request": {
             "method": "POST",
             "header": [
@@ -340,7 +351,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"merchant\": \"Indomaret Point\",\n  \"amount\": 48500,\n  \"category\": \"Belanja Harian\",\n  \"transaction_date\": \"2026-09-05\",\n  \"payment_method\": \"QRIS\",\n  \"notes\": \"Beli kopi kaleng dan cemilan roti\",\n  \"items\": [\n    \"Kopi Kenangan Kaleng 220ml\",\n    \"Roti Cokelat Keju\",\n    \"Air Mineral 600ml\"\n  ],\n  \"receipt_path\": \"{{receipt_path}}\"\n}",
+              "raw": "{\n  \"merchant\": \"Indomaret Point\",\n  \"amount\": 45000,\n  \"category\": \"Belanja Harian\",\n  \"transaction_date\": \"2026-09-05\",\n  \"payment_method\": \"QRIS\",\n  \"notes\": \"Beli camilan dan kopi botol\",\n  \"items\": [\n    \"Kopi Kenangan Kaleng\",\n    \"Roti Cokelat\",\n    \"Air Mineral 600ml\"\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -356,8 +367,7 @@
                 "api",
                 "transactions"
               ]
-            },
-            "description": "Menambahkan catatan transaksi baru. Field 'merchant' dan 'amount' wajib diisi. Field 'receipt_path' bersifat opsional (diisi dari path hasil upload struk)."
+            }
           },
           "event": [
             {
@@ -368,7 +378,7 @@
                   "    var res = pm.response.json();",
                   "    if (res.data && res.data.id) {",
                   "        pm.collectionVariables.set('transaction_id', res.data.id);",
-                  "        console.log('ID transaksi berhasil disimpan ke {{transaction_id}}: ' + res.data.id);",
+                  "        console.log('ID transaksi tersimpan ke {{transaction_id}}!');",
                   "    }",
                   "}"
                 ],
@@ -394,16 +404,14 @@
               "variable": [
                 {
                   "key": "id",
-                  "value": "{{transaction_id}}",
-                  "description": "UUID dari transaksi"
+                  "value": "{{transaction_id}}"
                 }
               ]
-            },
-            "description": "Mengambil data detail satu transaksi berdasarkan UUID."
+            }
           }
         },
         {
-          "name": "Update Transaksi (PUT / PATCH)",
+          "name": "Update Transaksi",
           "request": {
             "method": "PATCH",
             "header": [
@@ -415,7 +423,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"merchant\": \"Indomaret Point - Revisi\",\n  \"amount\": 52000,\n  \"category\": \"Belanja Harian\",\n  \"notes\": \"Ditambah pembelian permen mint\",\n  \"items\": [\n    \"Kopi Kenangan Kaleng 220ml\",\n    \"Roti Cokelat Keju\",\n    \"Air Mineral 600ml\",\n    \"Permen Mint\"\n  ]\n}",
+              "raw": "{\n  \"amount\": 48000,\n  \"notes\": \"Ada tambahan permen mint\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -435,16 +443,14 @@
               "variable": [
                 {
                   "key": "id",
-                  "value": "{{transaction_id}}",
-                  "description": "UUID dari transaksi"
+                  "value": "{{transaction_id}}"
                 }
               ]
-            },
-            "description": "Memperbarui field tertentu dari sebuah transaksi (hanya field yang dikirim yang akan diupdate)."
+            }
           }
         },
         {
-          "name": "Hapus Transaksi (DELETE)",
+          "name": "Hapus Transaksi",
           "request": {
             "method": "DELETE",
             "url": {
@@ -460,19 +466,16 @@
               "variable": [
                 {
                   "key": "id",
-                  "value": "{{transaction_id}}",
-                  "description": "UUID dari transaksi"
+                  "value": "{{transaction_id}}"
                 }
               ]
-            },
-            "description": "Menghapus transaksi. Jika ada foto struk terkait di Supabase Storage, backend otomatis menghapus file foto tersebut."
+            }
           }
         }
       ]
     },
     {
-      "name": "2. Struk & OCR (Receipts)",
-      "description": "Fitur AI Receipt Scanner dengan Google Gemini Vision dan upload file struk ke Supabase Storage privat.",
+      "name": "4. Struk & OCR (Receipts)",
       "item": [
         {
           "name": "Scan Struk AI (Gemini 1.5 Flash)",
@@ -504,12 +507,11 @@
                 "receipts",
                 "scan"
               ]
-            },
-            "description": "Kirim gambar struk dalam format Base64 (ukuran disarankan sudah dikompres < 300KB). AI Gemini akan mem-parsing nama merchant, total harga, kategori, tanggal, daftar item, dan metode bayar. Catatan: Endpoint ini TIDAK menyimpan data ke database, hanya untuk auto-fill form."
+            }
           }
         },
         {
-          "name": "Upload Foto Struk ke Storage",
+          "name": "Upload Foto Struk",
           "request": {
             "method": "POST",
             "header": [
@@ -538,60 +540,16 @@
                 "receipts",
                 "upload"
               ]
-            },
-            "description": "Menyimpan gambar struk ke bucket privat Supabase 'receipts/{user_id}/...'. Mengembalikan path dan signed_url sementara untuk preview."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 201) {",
-                  "    var res = pm.response.json();",
-                  "    if (res.data && res.data.path) {",
-                  "        pm.collectionVariables.set('receipt_path', res.data.path);",
-                  "        console.log('Path struk tersimpan ke {{receipt_path}}: ' + res.data.path);",
-                  "    }",
-                  "}"
-                ],
-                "type": "text/javascript"
-              }
             }
-          ]
-        },
-        {
-          "name": "Generate Signed URL Struk (5 Menit)",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{base_url}}/api/receipts/signed-url?path={{receipt_path}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "receipts",
-                "signed-url"
-              ],
-              "query": [
-                {
-                  "key": "path",
-                  "value": "{{receipt_path}}",
-                  "description": "Path struk di bucket privat (misal: user_id/filename.jpg)"
-                }
-              ]
-            },
-            "description": "Mendapatkan signed URL baru yang valid selama 5 menit (300 detik) untuk menampilkan gambar struk di galeri atau lightbox."
           }
         }
       ]
     },
     {
-      "name": "3. Dashboard & Analitik",
-      "description": "Data agregat untuk visualisasi dashboard (metric card, leaderboard toko, grafik kategori, dan tren harian).",
+      "name": "5. Dashboard & Analitik",
       "item": [
         {
-          "name": "Summary Metrics (Bulan Ini vs Bulan Lalu)",
+          "name": "Summary Metrics (Bulan Ini vs Lalu)",
           "request": {
             "method": "GET",
             "url": {
@@ -604,8 +562,7 @@
                 "dashboard",
                 "summary"
               ]
-            },
-            "description": "Menghitung total pengeluaran bulan berjalan, bulan lalu, rata-rata harian, serta persentase perubahan pengeluaran."
+            }
           }
         },
         {
@@ -625,28 +582,14 @@
               "query": [
                 {
                   "key": "limit",
-                  "value": "5",
-                  "description": "Batas jumlah merchant (default: 5)"
-                },
-                {
-                  "key": "from",
-                  "value": "2026-09-01",
-                  "description": "Filter tanggal mulai",
-                  "disabled": true
-                },
-                {
-                  "key": "to",
-                  "value": "2026-09-30",
-                  "description": "Filter tanggal akhir",
-                  "disabled": true
+                  "value": "5"
                 }
               ]
-            },
-            "description": "Leaderboard toko/merchant tempat pengguna mengeluarkan uang paling banyak."
+            }
           }
         },
         {
-          "name": "Breakdown Kategori (Pie / Donut Chart)",
+          "name": "Breakdown Kategori (Pie Chart)",
           "request": {
             "method": "GET",
             "url": {
@@ -658,27 +601,12 @@
                 "api",
                 "dashboard",
                 "breakdown"
-              ],
-              "query": [
-                {
-                  "key": "from",
-                  "value": "2026-09-01",
-                  "description": "Filter tanggal mulai",
-                  "disabled": true
-                },
-                {
-                  "key": "to",
-                  "value": "2026-09-30",
-                  "description": "Filter tanggal akhir",
-                  "disabled": true
-                }
               ]
-            },
-            "description": "Data pengeluaran per kategori beserta nominal dan persentasenya untuk visualisasi pie/donut chart."
+            }
           }
         },
         {
-          "name": "Tren Pengeluaran Harian (Bar / Area Chart)",
+          "name": "Tren Pengeluaran Harian",
           "request": {
             "method": "GET",
             "url": {
@@ -694,27 +622,23 @@
               "query": [
                 {
                   "key": "year",
-                  "value": "2026",
-                  "description": "Tahun analisis (default: tahun berjalan)"
+                  "value": "2026"
                 },
                 {
                   "key": "month",
-                  "value": "9",
-                  "description": "Bulan analisis (1-12, default: bulan berjalan)"
+                  "value": "9"
                 }
               ]
-            },
-            "description": "Data tren pengeluaran harian lengkap dari tanggal 1 hingga akhir bulan untuk visualisasi chart."
+            }
           }
         }
       ]
     },
     {
-      "name": "4. Ekspor Laporan (Export)",
-      "description": "Unduh rekapitulasi data transaksi dalam format file CSV / Spreadsheet.",
+      "name": "6. Ekspor Laporan",
       "item": [
         {
-          "name": "Ekspor CSV - Bulan Ini (this_month)",
+          "name": "Ekspor CSV - Bulan Ini",
           "request": {
             "method": "GET",
             "url": {
@@ -730,104 +654,16 @@
               "query": [
                 {
                   "key": "preset",
-                  "value": "this_month",
-                  "description": "Preset: this_month, last_month, this_year, atau custom"
+                  "value": "this_month"
                 }
               ]
-            },
-            "description": "Download file laporan CSV seluruh transaksi bulan ini."
-          }
-        },
-        {
-          "name": "Ekspor CSV - Bulan Lalu (last_month)",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{base_url}}/api/export/csv?preset=last_month",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "export",
-                "csv"
-              ],
-              "query": [
-                {
-                  "key": "preset",
-                  "value": "last_month",
-                  "description": "Preset bulan lalu"
-                }
-              ]
-            },
-            "description": "Download file laporan CSV transaksi bulan sebelumnya."
-          }
-        },
-        {
-          "name": "Ekspor CSV - Tahun Ini (this_year)",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{base_url}}/api/export/csv?preset=this_year",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "export",
-                "csv"
-              ],
-              "query": [
-                {
-                  "key": "preset",
-                  "value": "this_year",
-                  "description": "Preset tahun ini"
-                }
-              ]
-            },
-            "description": "Download file laporan CSV transaksi sepanjang tahun ini."
-          }
-        },
-        {
-          "name": "Ekspor CSV - Custom Date Range",
-          "request": {
-            "method": "GET",
-            "url": {
-              "raw": "{{base_url}}/api/export/csv?preset=custom&from=2026-09-01&to=2026-09-30",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "export",
-                "csv"
-              ],
-              "query": [
-                {
-                  "key": "preset",
-                  "value": "custom",
-                  "description": "Preset custom rentang tanggal"
-                },
-                {
-                  "key": "from",
-                  "value": "2026-09-01",
-                  "description": "Tanggal mulai (YYYY-MM-DD)"
-                },
-                {
-                  "key": "to",
-                  "value": "2026-09-30",
-                  "description": "Tanggal selesai (YYYY-MM-DD)"
-                }
-              ]
-            },
-            "description": "Download file laporan CSV dengan rentang tanggal fleksibel (from & to)."
+            }
           }
         }
       ]
     },
     {
-      "name": "5. System & Health",
-      "description": "Pemeriksaan kesehatan API dan endpoint keep-alive untuk mencegah auto-pause Supabase free tier.",
+      "name": "7. System",
       "item": [
         {
           "name": "Health Check",
@@ -845,35 +681,7 @@
                 "api",
                 "health"
               ]
-            },
-            "description": "Cek apakah server backend menyala dan berfungsi normal."
-          }
-        },
-        {
-          "name": "Keep-Alive Supabase Ping",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "GET",
-            "header": [
-              {
-                "key": "x-keep-alive-secret",
-                "value": "{{keep_alive_secret}}",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/keep-alive",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "keep-alive"
-              ]
-            },
-            "description": "Endpoint khusus cron GitHub Actions untuk memicu query ringan di Supabase agar project tidak ter-pause."
+            }
           }
         }
       ]

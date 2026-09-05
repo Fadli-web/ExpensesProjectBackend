@@ -1,8 +1,11 @@
+import bcrypt from 'bcryptjs';
 import { applyCors } from '../../lib/cors.js';
-import { createClient } from '@supabase/supabase-js';
+import { connectToDatabase } from '../../lib/db.js';
+import { signToken } from '../../lib/auth.js';
+import User from '../../lib/models/User.js';
 
 // POST /api/auth/login
-// Body: { "email": "...", "password": "..." }
+// Body: { email, password }
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
 
@@ -11,36 +14,41 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { email, password } = req.body || {};
-  if (!email || !password) {
-    return res.status(400).json({ error: 'email dan password wajib diisi' });
-  }
-
   try {
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+    const { email, password } = req.body || {};
 
-    if (!supabaseUrl || !supabaseKey) {
-      return res.status(500).json({ error: 'SUPABASE_URL atau SUPABASE_ANON_KEY belum di-set di environment variables' });
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email dan password wajib diisi' });
     }
 
-    const supabase = createClient(supabaseUrl, supabaseKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
+    await connectToDatabase();
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      return res.status(401).json({ error: error.message });
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail });
+    if (!user) {
+      return res.status(401).json({ error: 'Email atau password salah' });
     }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Email atau password salah' });
+    }
+
+    const token = signToken(user);
 
     return res.status(200).json({
+      success: true,
       message: 'Login berhasil',
-      user: data.user,
-      access_token: data.session?.access_token,
-      token_type: data.session?.token_type || 'bearer',
-      expires_in: data.session?.expires_in,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        avatar: user.avatar,
+        createdAt: user.createdAt,
+      },
+      token,
     });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: 'Terjadi kesalahan server: ' + err.message });
   }
 }

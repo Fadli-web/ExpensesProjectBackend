@@ -1,16 +1,13 @@
 {
   "functions": {
     "api/receipts/scan.js": { "maxDuration": 30 },
-    "api/receipts/upload.js": { "maxDuration": 20 }
+    "api/receipts/upload.js": { "maxDuration": 20 },
+    "api/user/avatar.js": { "maxDuration": 20 }
   },
   "rewrites": [
     {
       "source": "/",
       "destination": "/api/health"
-    },
-    {
-      "source": "/auth/v1/:match*",
-      "destination": "https://pfkhbsdxhpfbzxiboiep.supabase.co/auth/v1/:match*"
     }
   ]
 }
