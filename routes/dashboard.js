@@ -20,47 +20,27 @@ router.get('/summary', async (req, res) => {
     if (error) return res.status(400).json({ error: error.message });
 
     const rows = allRows || [];
+    const sum = (arr) => arr.reduce((acc, r) => acc + Number(r.amount || 0), 0);
+    const totalAllTime = sum(rows);
+
     const now = new Date();
     const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const lastMonthStr = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`;
 
-    // Filter transactions in current calendar month
-    let activeMonthRows = rows.filter((r) => r.transaction_date && r.transaction_date.startsWith(currentMonthStr));
-    let prevMonthRows = rows.filter((r) => r.transaction_date && r.transaction_date.startsWith(lastMonthStr));
+    const prevMonthRows = rows.filter((r) => r.transaction_date && r.transaction_date.startsWith(lastMonthStr));
 
-    // If current calendar month has no transactions, but user has transactions recorded (e.g. older scanned receipts):
-    // Use the latest transaction's month as the focal active month so the dashboard reflects the user's data!
-    let focalMonthLabel = currentMonthStr;
-    if (activeMonthRows.length === 0 && rows.length > 0) {
-      const latestTx = rows[0];
-      if (latestTx?.transaction_date) {
-        const latestMonthStr = latestTx.transaction_date.slice(0, 7);
-        focalMonthLabel = latestMonthStr;
-        const [yr, mo] = latestMonthStr.split('-').map(Number);
-        const prevMoDate = new Date(yr, mo - 2, 1);
-        const prevMoStr = `${prevMoDate.getFullYear()}-${String(prevMoDate.getMonth() + 1).padStart(2, '0')}`;
-
-        activeMonthRows = rows.filter((r) => r.transaction_date && r.transaction_date.startsWith(latestMonthStr));
-        prevMonthRows = rows.filter((r) => r.transaction_date && r.transaction_date.startsWith(prevMoStr));
-      }
-    }
-
-    const targetRows = activeMonthRows.length > 0 ? activeMonthRows : rows;
-
-    const sum = (arr) => arr.reduce((acc, r) => acc + Number(r.amount || 0), 0);
-    const totalThisMonth = sum(targetRows);
+    const totalThisMonth = totalAllTime;
     const totalLastMonth = sum(prevMonthRows);
     const percentChange = totalLastMonth === 0 ? null : ((totalThisMonth - totalLastMonth) / totalLastMonth) * 100;
 
-    const daysCount = Math.max(new Set(targetRows.map((r) => r.transaction_date)).size, 1);
-    const avgDaily = totalThisMonth / daysCount;
+    // Standard 30-day daily average (or run-rate)
+    const avgDaily = Math.round(totalAllTime / 30);
 
-    // Top merchants (from targetRows or all rows)
-    const merchantPool = targetRows.length >= 3 ? targetRows : rows;
+    // Top merchants from all transactions
     const merchantMap = {};
     const merchantCountMap = {};
-    for (const r of merchantPool) {
+    for (const r of rows) {
       if (!r.merchant) continue;
       merchantMap[r.merchant] = (merchantMap[r.merchant] || 0) + Number(r.amount || 0);
       merchantCountMap[r.merchant] = (merchantCountMap[r.merchant] || 0) + 1;
@@ -75,10 +55,9 @@ router.get('/summary', async (req, res) => {
       .sort((a, b) => b.total_amount - a.total_amount)
       .slice(0, 5);
 
-    // Category breakdown
-    const categoryPool = targetRows.length >= 3 ? targetRows : rows;
+    // Category breakdown from all transactions
     const categoryMap = {};
-    for (const r of categoryPool) {
+    for (const r of rows) {
       const cat = r.category || 'Lainnya';
       categoryMap[cat] = (categoryMap[cat] || 0) + Number(r.amount || 0);
     }
@@ -92,9 +71,9 @@ router.get('/summary', async (req, res) => {
       }))
       .sort((a, b) => b.total_amount - a.total_amount);
 
-    // Daily trend: group by transaction_date
+    // Daily trend: group by transaction_date across all recorded transactions
     const dailyMap = {};
-    for (const r of targetRows) {
+    for (const r of rows) {
       if (!r.transaction_date) continue;
       dailyMap[r.transaction_date] = (dailyMap[r.transaction_date] || 0) + Number(r.amount || 0);
     }
@@ -110,8 +89,9 @@ router.get('/summary', async (req, res) => {
       total_this_month: totalThisMonth,
       total_last_month: totalLastMonth,
       percent_change_vs_last_month: percentChange,
-      average_daily_this_month: Math.round(avgDaily),
-      focal_month: focalMonthLabel,
+      average_daily_this_month: avgDaily,
+      total_transactions: rows.length,
+      focal_month: currentMonthStr,
       top_merchants: topMerchants,
       category_breakdown: categoryBreakdown,
       daily_trend: dailyTrend,
