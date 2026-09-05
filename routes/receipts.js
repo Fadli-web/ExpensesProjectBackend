@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const formidable = require('formidable');
 const fs = require('fs');
+const os = require('os');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { requireAuth } = require('../middleware/auth');
 
@@ -27,6 +28,8 @@ tanpa markdown code fence, dengan skema persis berikut:
 }
 Jika sebuah field tidak terbaca, isi dengan null (kecuali items: pakai array kosong).`;
 
+const supabaseAdmin = require('../lib/supabaseAdmin');
+
 // POST /api/receipts/scan
 router.post('/scan', async (req, res) => {
   const auth = await requireAuth(req, res);
@@ -41,9 +44,14 @@ router.post('/scan', async (req, res) => {
 
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({
-      model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
-    });
+    const candidateModels = [
+      process.env.GEMINI_MODEL,
+      'gemini-3.5-flash-lite',
+      'gemini-3.6-flash',
+      'gemini-2.5-flash',
+      'gemini-flash-lite-latest',
+      'gemini-flash-latest',
+    ].filter(Boolean);
 
     let base64Data = image_base64;
     if (base64Data.includes(',')) {
@@ -51,16 +59,30 @@ router.post('/scan', async (req, res) => {
     }
 
     const mimeType = media_type || 'image/jpeg';
+    let result = null;
+    let lastErr = null;
 
-    const result = await model.generateContent([
-      SYSTEM_PROMPT,
-      {
-        inlineData: {
-          mimeType,
-          data: base64Data,
-        },
-      },
-    ]);
+    for (const modelName of candidateModels) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        result = await model.generateContent([
+          SYSTEM_PROMPT,
+          {
+            inlineData: {
+              mimeType,
+              data: base64Data,
+            },
+          },
+        ]);
+        if (result) break;
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+
+    if (!result) {
+      throw lastErr || new Error('All Gemini candidate models failed');
+    }
 
     const raw = result.response.text().replace(/```json|```/g, '').trim();
 
@@ -71,7 +93,7 @@ router.post('/scan', async (req, res) => {
       return res.status(502).json({ error: 'Could not parse AI response as JSON', raw });
     }
 
-    return res.status(200).json({ data: parsed });
+    return res.status(200).json({ ...parsed, data: parsed });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -81,38 +103,65 @@ router.post('/scan', async (req, res) => {
 router.post('/upload', async (req, res) => {
   const auth = await requireAuth(req, res);
   if (!auth) return;
-  const { user, supabase } = auth;
+  const { user } = auth;
 
-  const form = formidable({ maxFileSize: MAX_SIZE });
-  let files;
   try {
-    [, files] = await form.parse(req);
+    let buffer;
+    let mimetype = 'image/jpeg';
+    let ext = 'jpg';
+
+    // 1. Support direct JSON base64 upload
+    if (req.body?.image_base64 || req.body?.receipt_base64) {
+      let b64 = req.body.image_base64 || req.body.receipt_base64;
+      if (b64.includes(',')) {
+        const match = b64.match(/data:(image\/\w+);base64,/);
+        if (match) mimetype = match[1];
+        b64 = b64.split(',')[1];
+      }
+      ext = mimetype === 'image/png' ? 'png' : mimetype === 'image/webp' ? 'webp' : 'jpg';
+      buffer = Buffer.from(b64, 'base64');
+    } else {
+      // 2. Support multipart/form-data
+      const form = formidable({
+        maxFileSize: MAX_SIZE,
+        uploadDir: os.tmpdir(),
+        keepExtensions: true,
+      });
+      let files;
+      try {
+        [, files] = await form.parse(req);
+      } catch (err) {
+        return res.status(400).json({ error: 'Failed to parse upload: ' + err.message });
+      }
+
+      const fileArr = files.receipt;
+      const file = Array.isArray(fileArr) ? fileArr[0] : fileArr;
+      if (!file) return res.status(400).json({ error: 'No file uploaded under field "receipt"' });
+      if (!ALLOWED_TYPES.includes(file.mimetype)) {
+        return res.status(400).json({ error: 'Only JPEG, PNG, or WEBP images are allowed' });
+      }
+
+      mimetype = file.mimetype;
+      ext = mimetype === 'image/png' ? 'png' : mimetype === 'image/webp' ? 'webp' : 'jpg';
+      buffer = fs.readFileSync(file.filepath);
+    }
+
+    const path = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+    const { error: uploadErr } = await supabaseAdmin.storage
+      .from(RECEIPT_BUCKET)
+      .upload(path, buffer, { contentType: mimetype, upsert: true });
+
+    if (uploadErr) return res.status(400).json({ error: uploadErr.message });
+
+    const { data: signed } = await supabaseAdmin.storage
+      .from(RECEIPT_BUCKET)
+      .createSignedUrl(path, 60 * 60);
+
+    return res.status(200).json({ receipt_path: path, receipt_url: signed?.signedUrl || null });
   } catch (err) {
-    return res.status(400).json({ error: 'Failed to parse upload: ' + err.message });
+    return res.status(500).json({ error: err.message });
   }
-
-  const fileArr = files.receipt;
-  const file = Array.isArray(fileArr) ? fileArr[0] : fileArr;
-  if (!file) return res.status(400).json({ error: 'No file uploaded under field "receipt"' });
-  if (!ALLOWED_TYPES.includes(file.mimetype)) {
-    return res.status(400).json({ error: 'Only JPEG, PNG, or WEBP images are allowed' });
-  }
-
-  const ext = file.mimetype === 'image/png' ? 'png' : file.mimetype === 'image/webp' ? 'webp' : 'jpg';
-  const path = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-  const buffer = fs.readFileSync(file.filepath);
-
-  const { error: uploadErr } = await supabase.storage
-    .from(RECEIPT_BUCKET)
-    .upload(path, buffer, { contentType: file.mimetype });
-
-  if (uploadErr) return res.status(400).json({ error: uploadErr.message });
-
-  const { data: signed } = await supabase.storage
-    .from(RECEIPT_BUCKET)
-    .createSignedUrl(path, 60 * 60); // 1 hour validity
-
-  return res.status(200).json({ receipt_path: path, receipt_url: signed?.signedUrl || null });
 });
 
 // GET /api/receipts/gallery
