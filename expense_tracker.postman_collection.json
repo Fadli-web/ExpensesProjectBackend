@@ -8,19 +8,19 @@
   "variable": [
     {
       "key": "base_url",
-      "value": "http://localhost:3000",
+      "value": "https://expenses-note-backend.vercel.app",
       "type": "string",
       "description": "Base URL server backend (misal: http://localhost:3000 atau https://your-project.vercel.app)"
     },
     {
       "key": "supabase_url",
-      "value": "https://xxxxxxxxxxxx.supabase.co",
+      "value": "https://pfkhbsdxhpfbzxiboiep.supabase.co",
       "type": "string",
       "description": "URL project Supabase kamu"
     },
     {
       "key": "supabase_anon_key",
-      "value": "eyJhbGciOi...",
+      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBma2hic2R4aHBmYnp4aWJvaWVwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MDk1OTIsImV4cCI6MjEwNDE4NTU5Mn0.ggJcl_1GJWNZ4xj09f5vYhKj1_1Sw25N-r7qXoLYMm0",
       "type": "string",
       "description": "Supabase Public Anon Key"
     },
@@ -65,7 +65,115 @@
       "description": "Endpoint pembantu langsung ke Supabase Auth untuk mendaftar akun dan login guna mendapatkan token Bearer JWT secara otomatis.",
       "item": [
         {
-          "name": "Register / Sign Up User Baru",
+          "name": "Register User Baru (via Backend)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"faddli@gmail.com\",\n  \"password\": \"password123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ]
+            },
+            "description": "Daftar user baru langsung lewat endpoint backend /api/auth/register."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var data = pm.response.json();",
+                  "    if (data.access_token) {",
+                  "        pm.collectionVariables.set('supabase_token', data.access_token);",
+                  "        console.log('Token otomatis tersimpan!');",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login / Sign In (via Backend)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"faddli@gmail.com\",\n  \"password\": \"password123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Login langsung ke backend /api/auth/login. Script test otomatis menyimpan access_token ke variable {{supabase_token}}."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var data = pm.response.json();",
+                  "    if (data.access_token) {",
+                  "        pm.collectionVariables.set('supabase_token', data.access_token);",
+                  "        console.log('Access token berhasil disimpan ke variable supabase_token!');",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register User Baru (Direct ke Supabase)",
           "request": {
             "auth": {
               "type": "noauth"
@@ -85,7 +193,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"Password123!\"\n}",
+              "raw": "{\n  \"email\": \"faddli@gmail.com\",\n  \"password\": \"password123\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -103,28 +211,11 @@
                 "signup"
               ]
             },
-            "description": "Daftar akun user baru di Supabase. Jika confirm email dinonaktifkan di Supabase, token session akan langsung didapatkan."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 200) {",
-                  "    var data = pm.response.json();",
-                  "    if (data.access_token) {",
-                  "        pm.collectionVariables.set('supabase_token', data.access_token);",
-                  "        console.log('Token otomatis disimpan dari register!');",
-                  "    }",
-                  "}"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ]
+            "description": "Register langsung ke API Supabase Auth."
+          }
         },
         {
-          "name": "Login / Sign In (Auto-set Token)",
+          "name": "Login / Sign In (Direct ke Supabase)",
           "request": {
             "auth": {
               "type": "noauth"
@@ -144,7 +235,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"Password123!\"\n}",
+              "raw": "{\n  \"email\": \"faddli@gmail.com\",\n  \"password\": \"password123\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -168,49 +259,7 @@
                 }
               ]
             },
-            "description": "Login dengan email dan password. Script otomatis mengambil access_token dan menyimpannya ke variable {{supabase_token}}."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "if (pm.response.code === 200) {",
-                  "    var data = pm.response.json();",
-                  "    if (data.access_token) {",
-                  "        pm.collectionVariables.set('supabase_token', data.access_token);",
-                  "        console.log('Access token berhasil disimpan ke collection variable supabase_token');",
-                  "    }",
-                  "}"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ]
-        },
-        {
-          "name": "Get User Info (Profile)",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "apikey",
-                "value": "{{supabase_anon_key}}",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{supabase_url}}/auth/v1/user",
-              "host": [
-                "{{supabase_url}}"
-              ],
-              "path": [
-                "auth",
-                "v1",
-                "user"
-              ]
-            },
-            "description": "Melihat profil akun user yang sedang aktif berdasarkan Bearer token."
+            "description": "Login langsung ke API Supabase Auth."
           }
         }
       ]
