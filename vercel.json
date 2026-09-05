@@ -2,5 +2,11 @@
   "functions": {
     "api/receipts/scan.js": { "maxDuration": 30 },
     "api/receipts/upload.js": { "maxDuration": 20 }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/index.html"
+    }
+  ]
 }
