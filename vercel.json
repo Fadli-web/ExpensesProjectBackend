@@ -6,7 +6,11 @@
   "rewrites": [
     {
       "source": "/",
-      "destination": "/index.html"
+      "destination": "/api/health"
+    },
+    {
+      "source": "/api",
+      "destination": "/api/health"
     }
   ]
 }
