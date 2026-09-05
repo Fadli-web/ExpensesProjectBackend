@@ -1,7 +1,6 @@
 import { applyCors } from '../../lib/cors.js';
 import { requireUser } from '../../lib/auth.js';
-import { connectToDatabase } from '../../lib/db.js';
-import Transaction from '../../lib/models/Transaction.js';
+import { supabaseAdmin } from '../../lib/db.js';
 import { toCsv } from '../../lib/csv.js';
 
 function toISO(d) {
@@ -50,22 +49,25 @@ export default async function handler(req, res) {
       [from, to] = presetRange(preset);
     }
 
-    await connectToDatabase();
+    let query = supabaseAdmin
+      .from('transactions')
+      .select('transaction_date, merchant, category, amount, notes, payment_method')
+      .eq('user_id', user.id)
+      .order('transaction_date', { ascending: true });
 
-    const filter = { user_id: user._id };
-    if (from || to) {
-      filter.transaction_date = {};
-      if (from) filter.transaction_date.$gte = from;
-      if (to) filter.transaction_date.$lte = to;
+    if (from) query = query.gte('transaction_date', from);
+    if (to) query = query.lte('transaction_date', to);
+
+    const { data, error } = await query;
+
+    if (error) {
+      return res.status(500).json({ error: 'Gagal mengekspor data: ' + error.message });
     }
 
-    const data = await Transaction.find(filter)
-      .select('transaction_date merchant category amount notes payment_method')
-      .sort({ transaction_date: 1 })
-      .lean();
-
-    const rows = data.map((r) => ({
-      Tanggal: r.transaction_date,
+    const rows = (data || []).map((r) => ({
+      Tanggal: typeof r.transaction_date === 'string'
+        ? r.transaction_date.slice(0, 10)
+        : new Date(r.transaction_date).toISOString().slice(0, 10),
       'Nama Toko': r.merchant,
       Kategori: r.category,
       Nominal: r.amount,

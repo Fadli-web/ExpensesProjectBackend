@@ -1,8 +1,6 @@
-import bcrypt from 'bcryptjs';
 import { applyCors } from '../../lib/cors.js';
-import { connectToDatabase } from '../../lib/db.js';
-import { signToken } from '../../lib/auth.js';
-import User from '../../lib/models/User.js';
+import { supabaseAdmin } from '../../lib/db.js';
+import { createClient } from '@supabase/supabase-js';
 
 // POST /api/auth/register
 // Body: { name, email, password }
@@ -25,36 +23,73 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Password minimal 6 karakter' });
     }
 
-    await connectToDatabase();
-
-    const normalizedEmail = email.toLowerCase().trim();
-    const existingUser = await User.findOne({ email: normalizedEmail });
-    if (existingUser) {
-      return res.status(400).json({ error: 'Email sudah terdaftar. Silakan login.' });
-    }
-
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    const newUser = await User.create({
-      name: name.trim(),
-      email: normalizedEmail,
-      password: hashedPassword,
+    // Daftarkan user ke Supabase Auth
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      email: email.toLowerCase().trim(),
+      password,
+      email_confirm: true, // langsung konfirmasi tanpa email verifikasi
+      user_metadata: { name: name.trim() },
     });
 
-    const token = signToken(newUser);
+    if (error) {
+      // Tangani error email sudah terdaftar
+      if (error.message.toLowerCase().includes('already registered') || error.code === 'email_exists') {
+        return res.status(400).json({ error: 'Email sudah terdaftar. Silakan login.' });
+      }
+      return res.status(400).json({ error: error.message });
+    }
+
+    const newUser = data.user;
+
+    // Buat profil di tabel profiles
+    const { error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .upsert({
+        id: newUser.id,
+        name: name.trim(),
+        avatar_url: null,
+      });
+
+    if (profileError) {
+      console.error('Gagal membuat profil:', profileError.message);
+      // Tetap lanjut — profil akan dibuat saat pertama kali akses
+    }
+
+    // Login untuk mendapatkan access_token
+    const supabaseAnon = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+    const { data: signInData, error: signInError } = await supabaseAnon.auth.signInWithPassword({
+      email: email.toLowerCase().trim(),
+      password,
+    });
+
+    if (signInError) {
+      // User berhasil dibuat tapi gagal login otomatis — kembalikan tanpa token
+      return res.status(201).json({
+        success: true,
+        message: 'Registrasi berhasil. Silakan login.',
+        user: {
+          id: newUser.id,
+          name: name.trim(),
+          email: newUser.email,
+          avatar_url: null,
+          created_at: newUser.created_at,
+        },
+      });
+    }
 
     return res.status(201).json({
       success: true,
       message: 'Registrasi berhasil',
       user: {
-        id: newUser._id,
-        name: newUser.name,
-        email: newUser.email,
-        avatar: newUser.avatar,
-        createdAt: newUser.createdAt,
+        id: signInData.user.id,
+        name: name.trim(),
+        email: signInData.user.email,
+        avatar_url: null,
+        created_at: signInData.user.created_at,
       },
-      token,
+      access_token: signInData.session.access_token,
+      refresh_token: signInData.session.refresh_token,
+      expires_at: signInData.session.expires_at,
     });
   } catch (err) {
     return res.status(500).json({ error: 'Terjadi kesalahan server: ' + err.message });

@@ -1,7 +1,6 @@
 import { applyCors } from '../../lib/cors.js';
 import { requireUser } from '../../lib/auth.js';
-import { connectToDatabase } from '../../lib/db.js';
-import Transaction from '../../lib/models/Transaction.js';
+import { supabaseAdmin } from '../../lib/db.js';
 
 // GET /api/dashboard/trend?year=2026&month=9  (default: bulan berjalan)
 export default async function handler(req, res) {
@@ -27,12 +26,16 @@ export default async function handler(req, res) {
     const startISO = start.toISOString().slice(0, 10);
     const endISO = end.toISOString().slice(0, 10);
 
-    await connectToDatabase();
+    const { data, error } = await supabaseAdmin
+      .from('transactions')
+      .select('transaction_date, amount')
+      .eq('user_id', user.id)
+      .gte('transaction_date', startISO)
+      .lte('transaction_date', endISO);
 
-    const data = await Transaction.find({
-      user_id: user._id,
-      transaction_date: { $gte: startISO, $lte: endISO },
-    }).select('transaction_date amount').lean();
+    if (error) {
+      return res.status(500).json({ error: 'Gagal memuat tren transaksi: ' + error.message });
+    }
 
     const daysInMonth = end.getDate();
     const monthPrefix = startISO.slice(0, 8); // "YYYY-MM-"
@@ -42,8 +45,11 @@ export default async function handler(req, res) {
     }));
     const indexByDate = Object.fromEntries(series.map((s, i) => [s.date, i]));
 
-    for (const row of data) {
-      const idx = indexByDate[row.transaction_date];
+    for (const row of data || []) {
+      const dateStr = typeof row.transaction_date === 'string'
+        ? row.transaction_date.slice(0, 10)
+        : new Date(row.transaction_date).toISOString().slice(0, 10);
+      const idx = indexByDate[dateStr];
       if (idx !== undefined) series[idx].total += Number(row.amount);
     }
 

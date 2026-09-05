@@ -1,7 +1,6 @@
 import { applyCors } from '../../lib/cors.js';
 import { requireUser } from '../../lib/auth.js';
-import { connectToDatabase } from '../../lib/db.js';
-import Transaction from '../../lib/models/Transaction.js';
+import { supabaseAdmin } from '../../lib/db.js';
 
 // GET /api/dashboard/top-merchants?from=&to=&limit=5
 export default async function handler(req, res) {
@@ -19,19 +18,22 @@ export default async function handler(req, res) {
   try {
     const { from, to, limit = '5' } = req.query;
 
-    await connectToDatabase();
+    let query = supabaseAdmin
+      .from('transactions')
+      .select('merchant, amount')
+      .eq('user_id', user.id);
 
-    const filter = { user_id: user._id };
-    if (from || to) {
-      filter.transaction_date = {};
-      if (from) filter.transaction_date.$gte = from;
-      if (to) filter.transaction_date.$lte = to;
+    if (from) query = query.gte('transaction_date', from);
+    if (to) query = query.lte('transaction_date', to);
+
+    const { data, error } = await query;
+
+    if (error) {
+      return res.status(500).json({ error: 'Gagal memuat top merchants: ' + error.message });
     }
 
-    const rows = await Transaction.find(filter).select('merchant amount').lean();
-
     const grouped = {};
-    for (const row of rows) {
+    for (const row of data || []) {
       grouped[row.merchant] = (grouped[row.merchant] || 0) + Number(row.amount);
     }
 

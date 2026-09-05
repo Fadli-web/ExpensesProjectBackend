@@ -1,8 +1,6 @@
-import bcrypt from 'bcryptjs';
 import { applyCors } from '../../lib/cors.js';
-import { connectToDatabase } from '../../lib/db.js';
-import { signToken } from '../../lib/auth.js';
-import User from '../../lib/models/User.js';
+import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '../../lib/db.js';
 
 // POST /api/auth/login
 // Body: { email, password }
@@ -21,32 +19,48 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Email dan password wajib diisi' });
     }
 
-    await connectToDatabase();
+    // Login via Supabase Auth
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.toLowerCase().trim(),
+      password,
+    });
 
-    const normalizedEmail = email.toLowerCase().trim();
-    const user = await User.findOne({ email: normalizedEmail });
-    if (!user) {
+    if (error) {
       return res.status(401).json({ error: 'Email atau password salah' });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ error: 'Email atau password salah' });
-    }
+    const { user, session } = data;
 
-    const token = signToken(user);
+    // Ambil data profil dari tabel profiles
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('name, avatar_url, created_at, updated_at')
+      .eq('id', user.id)
+      .single();
+
+    // Jika profil belum ada, buat otomatis
+    if (!profile) {
+      await supabaseAdmin.from('profiles').upsert({
+        id: user.id,
+        name: user.user_metadata?.name || user.email.split('@')[0],
+        avatar_url: null,
+      });
+    }
 
     return res.status(200).json({
       success: true,
       message: 'Login berhasil',
       user: {
-        id: user._id,
-        name: user.name,
+        id: user.id,
+        name: profile?.name || user.user_metadata?.name || user.email.split('@')[0],
         email: user.email,
-        avatar: user.avatar,
-        createdAt: user.createdAt,
+        avatar_url: profile?.avatar_url || null,
+        created_at: user.created_at,
       },
-      token,
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+      expires_at: session.expires_at,
     });
   } catch (err) {
     return res.status(500).json({ error: 'Terjadi kesalahan server: ' + err.message });

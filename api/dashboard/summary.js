@@ -1,7 +1,6 @@
 import { applyCors } from '../../lib/cors.js';
 import { requireUser } from '../../lib/auth.js';
-import { connectToDatabase } from '../../lib/db.js';
-import Transaction from '../../lib/models/Transaction.js';
+import { supabaseAdmin } from '../../lib/db.js';
 
 function toISO(d) {
   return d.toISOString().slice(0, 10);
@@ -27,26 +26,28 @@ export default async function handler(req, res) {
   }
 
   try {
-    await connectToDatabase();
-
     const now = new Date();
     const [thisStart, thisEnd] = monthRange(now);
     const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const [lastStart, lastEnd] = monthRange(lastMonthDate);
 
-    const [thisRows, lastRows] = await Promise.all([
-      Transaction.find({
-        user_id: user._id,
-        transaction_date: { $gte: thisStart, $lte: thisEnd },
-      }).select('amount'),
-      Transaction.find({
-        user_id: user._id,
-        transaction_date: { $gte: lastStart, $lte: lastEnd },
-      }).select('amount'),
+    const [thisResult, lastResult] = await Promise.all([
+      supabaseAdmin
+        .from('transactions')
+        .select('amount')
+        .eq('user_id', user.id)
+        .gte('transaction_date', thisStart)
+        .lte('transaction_date', thisEnd),
+      supabaseAdmin
+        .from('transactions')
+        .select('amount')
+        .eq('user_id', user.id)
+        .gte('transaction_date', lastStart)
+        .lte('transaction_date', lastEnd),
     ]);
 
-    const totalThisMonth = thisRows.reduce((s, r) => s + Number(r.amount), 0);
-    const totalLastMonth = lastRows.reduce((s, r) => s + Number(r.amount), 0);
+    const totalThisMonth = (thisResult.data || []).reduce((s, r) => s + Number(r.amount), 0);
+    const totalLastMonth = (lastResult.data || []).reduce((s, r) => s + Number(r.amount), 0);
     const daysElapsed = now.getDate();
     const avgDaily = daysElapsed > 0 ? totalThisMonth / daysElapsed : 0;
     const pctChange =

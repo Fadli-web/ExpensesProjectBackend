@@ -1,7 +1,6 @@
 import { applyCors } from '../../lib/cors.js';
 import { requireUser } from '../../lib/auth.js';
-import { connectToDatabase } from '../../lib/db.js';
-import Transaction from '../../lib/models/Transaction.js';
+import { supabaseAdmin } from '../../lib/db.js';
 
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
@@ -9,8 +8,6 @@ export default async function handler(req, res) {
   const auth = await requireUser(req, res);
   if (!auth) return;
   const { user } = auth;
-
-  await connectToDatabase();
 
   if (req.method === 'GET') return handleList(req, res, user);
   if (req.method === 'POST') return handleCreate(req, res, user);
@@ -34,40 +31,35 @@ async function handleList(req, res, user) {
 
     const pageNum = Math.max(parseInt(page, 10) || 1, 1);
     const pageSize = Math.min(Math.max(parseInt(page_size, 10) || 20, 1), 100);
-    const skip = (pageNum - 1) * pageSize;
+    const from_idx = (pageNum - 1) * pageSize;
+    const to_idx = from_idx + pageSize - 1;
 
-    const filter = { user_id: user._id };
+    let query = supabaseAdmin
+      .from('transactions')
+      .select('*', { count: 'exact' })
+      .eq('user_id', user.id)
+      .order('transaction_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .range(from_idx, to_idx);
 
-    if (from || to) {
-      filter.transaction_date = {};
-      if (from) filter.transaction_date.$gte = from;
-      if (to) filter.transaction_date.$lte = to;
+    if (from) query = query.gte('transaction_date', from);
+    if (to) query = query.lte('transaction_date', to);
+    if (category) query = query.eq('category', category);
+    if (payment_method) query = query.eq('payment_method', payment_method);
+    if (q) query = query.ilike('merchant', `%${q.trim()}%`);
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      return res.status(500).json({ error: 'Gagal mengambil data transaksi: ' + error.message });
     }
 
-    if (category) filter.category = category;
-    if (payment_method) filter.payment_method = payment_method;
-    if (q) filter.merchant = { $regex: q.trim(), $options: 'i' };
-
-    const [total, transactions] = await Promise.all([
-      Transaction.countDocuments(filter),
-      Transaction.find(filter)
-        .sort({ transaction_date: -1, createdAt: -1 })
-        .skip(skip)
-        .limit(pageSize)
-        .lean(),
-    ]);
-
-    const data = transactions.map((t) => ({
-      ...t,
-      id: t._id,
-    }));
-
     return res.status(200).json({
-      data,
+      data: data || [],
       pagination: {
         page: pageNum,
         page_size: pageSize,
-        total,
+        total: count || 0,
       },
     });
   } catch (err) {
@@ -96,20 +88,25 @@ async function handleCreate(req, res, user) {
       return res.status(400).json({ error: 'merchant dan amount wajib diisi' });
     }
 
-    const created = await Transaction.create({
-      user_id: user._id,
-      merchant: merchant.trim(),
-      amount: Number(amount),
-      category: category || 'Lainnya',
-      transaction_date: transaction_date || new Date().toISOString().slice(0, 10),
-      payment_method: payment_method || null,
-      notes: notes || null,
-      items: items || [],
-      receipt_image: receipt_image || receipt_path || null,
-    });
+    const { data, error } = await supabaseAdmin
+      .from('transactions')
+      .insert({
+        user_id: user.id,
+        merchant: merchant.trim(),
+        amount: Number(amount),
+        category: category || 'Lainnya',
+        transaction_date: transaction_date || new Date().toISOString().slice(0, 10),
+        payment_method: payment_method || null,
+        notes: notes || null,
+        items: items || [],
+        receipt_image: receipt_image || receipt_path || null,
+      })
+      .select()
+      .single();
 
-    const data = created.toObject();
-    data.id = data._id;
+    if (error) {
+      return res.status(500).json({ error: 'Gagal membuat transaksi: ' + error.message });
+    }
 
     return res.status(201).json({ data });
   } catch (err) {

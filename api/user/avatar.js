@@ -1,7 +1,6 @@
 import { applyCors } from '../../lib/cors.js';
 import { requireUser } from '../../lib/auth.js';
-import { connectToDatabase } from '../../lib/db.js';
-import User from '../../lib/models/User.js';
+import { supabaseAdmin } from '../../lib/db.js';
 
 export const config = {
   api: {
@@ -11,8 +10,9 @@ export const config = {
   },
 };
 
-// POST /api/user/avatar -> Upload & Simpan Foto Profil
-// Body: { image_base64 }
+// POST /api/user/avatar
+// Body: { image_base64, media_type? }
+// Upload foto profil ke Supabase Storage bucket "avatars"
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
 
@@ -26,29 +26,58 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { image_base64 } = req.body || {};
+    const { image_base64, media_type = 'image/jpeg' } = req.body || {};
 
     if (!image_base64) {
       return res.status(400).json({ error: 'image_base64 wajib diisi' });
     }
 
-    // Pastikan format data URL rapi (bisa langsung dipakai di tag <img> frontend)
-    let formattedAvatar = image_base64;
-    if (!formattedAvatar.startsWith('data:image/')) {
-      formattedAvatar = `data:image/jpeg;base64,${image_base64}`;
+    // Konversi Base64 ke Buffer
+    let base64Data = image_base64;
+    if (base64Data.includes(',')) {
+      // Ambil hanya data setelah "data:image/jpeg;base64,"
+      base64Data = base64Data.split(',')[1];
     }
 
-    await connectToDatabase();
-    const updatedUser = await User.findByIdAndUpdate(
-      user._id,
-      { avatar: formattedAvatar },
-      { new: true }
-    ).select('-password');
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    // Tentukan ekstensi file dari media type
+    const ext = media_type.split('/')[1] || 'jpg';
+    const filePath = `${user.id}/avatar.${ext}`;
+
+    // Upload ke Supabase Storage bucket "avatars"
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from('avatars')
+      .upload(filePath, buffer, {
+        contentType: media_type,
+        upsert: true, // Timpa jika sudah ada
+      });
+
+    if (uploadError) {
+      return res.status(500).json({ error: 'Gagal upload foto: ' + uploadError.message });
+    }
+
+    // Dapatkan URL publik
+    const { data: urlData } = supabaseAdmin.storage
+      .from('avatars')
+      .getPublicUrl(filePath);
+
+    const avatarUrl = urlData.publicUrl;
+
+    // Simpan URL ke tabel profiles
+    const { error: updateError } = await supabaseAdmin
+      .from('profiles')
+      .update({ avatar_url: avatarUrl })
+      .eq('id', user.id);
+
+    if (updateError) {
+      return res.status(500).json({ error: 'Gagal menyimpan URL foto: ' + updateError.message });
+    }
 
     return res.status(200).json({
       success: true,
       message: 'Foto profil berhasil disimpan',
-      avatar: updatedUser.avatar,
+      avatar_url: avatarUrl,
     });
   } catch (err) {
     return res.status(500).json({ error: 'Gagal menyimpan foto profil: ' + err.message });

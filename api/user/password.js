@@ -1,17 +1,15 @@
-import bcrypt from 'bcryptjs';
 import { applyCors } from '../../lib/cors.js';
 import { requireUser } from '../../lib/auth.js';
-import { connectToDatabase } from '../../lib/db.js';
-import User from '../../lib/models/User.js';
+import { createClient } from '@supabase/supabase-js';
 
-// PUT /api/user/password -> Ganti password
+// PUT /api/user/password
 // Body: { current_password, new_password }
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
 
   const auth = await requireUser(req, res);
   if (!auth) return;
-  const { user } = auth;
+  const { user, token } = auth;
 
   if (req.method !== 'PUT' && req.method !== 'POST') {
     res.setHeader('Allow', 'PUT, POST, OPTIONS');
@@ -29,24 +27,30 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Password baru minimal 6 karakter' });
     }
 
-    await connectToDatabase();
+    // Verifikasi password lama dengan cara re-login
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+    const { error: verifyError } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: current_password,
+    });
 
-    // Ambil user lengkap dengan field password
-    const userWithPassword = await User.findById(user._id);
-    if (!userWithPassword) {
-      return res.status(404).json({ error: 'User tidak ditemukan' });
-    }
-
-    const isMatch = await bcrypt.compare(current_password, userWithPassword.password);
-    if (!isMatch) {
+    if (verifyError) {
       return res.status(400).json({ error: 'Password saat ini tidak sesuai' });
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(new_password, salt);
+    // Update password menggunakan session user yang aktif
+    const userClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
 
-    userWithPassword.password = hashedPassword;
-    await userWithPassword.save();
+    const { error: updateError } = await userClient.auth.updateUser({
+      password: new_password,
+    });
+
+    if (updateError) {
+      return res.status(500).json({ error: 'Gagal memperbarui password: ' + updateError.message });
+    }
 
     return res.status(200).json({
       success: true,

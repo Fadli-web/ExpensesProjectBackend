@@ -1,7 +1,6 @@
 import { applyCors } from '../../lib/cors.js';
 import { requireUser } from '../../lib/auth.js';
-import { connectToDatabase } from '../../lib/db.js';
-import Transaction from '../../lib/models/Transaction.js';
+import { supabaseAdmin } from '../../lib/db.js';
 
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
@@ -10,8 +9,6 @@ export default async function handler(req, res) {
   if (!auth) return;
   const { user } = auth;
   const { id } = req.query;
-
-  await connectToDatabase();
 
   if (req.method === 'GET') return handleGet(res, user, id);
   if (req.method === 'PUT' || req.method === 'PATCH') return handleUpdate(req, res, user, id);
@@ -23,17 +20,18 @@ export default async function handler(req, res) {
 
 async function handleGet(res, user, id) {
   try {
-    const transaction = await Transaction.findOne({ _id: id, user_id: user._id }).lean();
-    if (!transaction) {
+    const { data, error } = await supabaseAdmin
+      .from('transactions')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
+
+    if (error || !data) {
       return res.status(404).json({ error: 'Transaksi tidak ditemukan' });
     }
 
-    return res.status(200).json({
-      data: {
-        ...transaction,
-        id: transaction._id,
-      },
-    });
+    return res.status(200).json({ data });
   } catch (err) {
     return res.status(500).json({ error: 'Gagal mengambil transaksi: ' + err.message });
   }
@@ -65,22 +63,19 @@ async function handleUpdate(req, res, user, id) {
       return res.status(400).json({ error: 'Tidak ada field valid untuk diupdate' });
     }
 
-    const updated = await Transaction.findOneAndUpdate(
-      { _id: id, user_id: user._id },
-      { $set: patch },
-      { new: true }
-    ).lean();
+    const { data, error } = await supabaseAdmin
+      .from('transactions')
+      .update(patch)
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .select()
+      .single();
 
-    if (!updated) {
+    if (error || !data) {
       return res.status(404).json({ error: 'Transaksi tidak ditemukan' });
     }
 
-    return res.status(200).json({
-      data: {
-        ...updated,
-        id: updated._id,
-      },
-    });
+    return res.status(200).json({ data });
   } catch (err) {
     return res.status(500).json({ error: 'Gagal mengupdate transaksi: ' + err.message });
   }
@@ -88,9 +83,14 @@ async function handleUpdate(req, res, user, id) {
 
 async function handleDelete(res, user, id) {
   try {
-    const deleted = await Transaction.findOneAndDelete({ _id: id, user_id: user._id });
-    if (!deleted) {
-      return res.status(404).json({ error: 'Transaksi tidak ditemukan' });
+    const { error } = await supabaseAdmin
+      .from('transactions')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id);
+
+    if (error) {
+      return res.status(500).json({ error: 'Gagal menghapus transaksi: ' + error.message });
     }
 
     return res.status(200).json({ success: true, message: 'Transaksi berhasil dihapus' });
