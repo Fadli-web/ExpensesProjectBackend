@@ -1,19 +1,13 @@
-const { requireAuth, applyCors } = require('../../middleware/auth');
+const express = require('express');
+const router = express.Router();
+const { requireAuth } = require('../middleware/auth');
 
 function ymd(d) { return d.toISOString().slice(0, 10); }
 function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
 function startOfNextMonth(d) { return new Date(d.getFullYear(), d.getMonth() + 1, 1); }
 
 // GET /api/dashboard/summary
-// Returns everything the dashboard needs in one call:
-//   - total this month / avg daily / % change vs last month
-//   - top merchants
-//   - category breakdown (for the donut chart)
-//   - daily trend for the current month (for the bar/area chart)
-module.exports = async (req, res) => {
-  if (applyCors(req, res)) return;
-  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
-
+router.get('/summary', async (req, res) => {
   const auth = await requireAuth(req, res);
   if (!auth) return;
   const { user, supabase } = auth;
@@ -23,8 +17,6 @@ module.exports = async (req, res) => {
   const nextMonthStart = startOfNextMonth(now);
   const lastMonthStart = startOfMonth(new Date(now.getFullYear(), now.getMonth() - 1, 1));
 
-  // Pull this month + last month in one query, aggregate in JS.
-  // (For very large datasets, move this aggregation into a Postgres RPC.)
   const { data: rows, error } = await supabase
     .from('transactions')
     .select('merchant, amount, category, transaction_date')
@@ -84,4 +76,6 @@ module.exports = async (req, res) => {
     category_breakdown: categoryBreakdown,
     daily_trend: dailyTrend,
   });
-};
+});
+
+module.exports = router;

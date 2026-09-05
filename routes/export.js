@@ -1,4 +1,6 @@
-const { requireAuth, applyCors } = require('../../middleware/auth');
+const express = require('express');
+const router = express.Router();
+const { requireAuth } = require('../middleware/auth');
 
 function csvEscape(val) {
   if (val === null || val === undefined) return '';
@@ -27,12 +29,8 @@ function periodToRange(period, custom_start, custom_end) {
   return { start: fmt(start), end: fmt(now) };
 }
 
-// GET /api/export/csv?period=this_month|last_month|this_year|custom&start=YYYY-MM-DD&end=YYYY-MM-DD
-// Streams a CSV download of the user's transactions in the chosen period.
-module.exports = async (req, res) => {
-  if (applyCors(req, res)) return;
-  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
-
+// GET /api/export/csv
+router.get('/csv', async (req, res) => {
   const auth = await requireAuth(req, res);
   if (!auth) return;
   const { user, supabase } = auth;
@@ -75,4 +73,6 @@ module.exports = async (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   return res.status(200).send(csv);
-};
+});
+
+module.exports = router;
