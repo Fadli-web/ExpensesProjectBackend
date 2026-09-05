@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { createClient } = require('@supabase/supabase-js');
 const { requireAuth } = require('../middleware/auth');
+const supabaseAdmin = require('../lib/supabaseAdmin');
 
 const supabase = createClient(
   process.env.SUPABASE_URL || 'https://placeholder.supabase.co',
@@ -15,6 +16,51 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: 'email and password are required' });
   }
 
+  if (typeof password !== 'string' || password.length < 6) {
+    return res.status(400).json({ error: 'Password should be at least 6 characters' });
+  }
+
+  // Gunakan supabaseAdmin jika SUPABASE_SERVICE_ROLE_KEY tersedia.
+  // Ini otomatis mengonfirmasi email (email_confirm: true) dan TIDAK mengirim email konfirmasi,
+  // sehingga mencegah error "email rate limit exceeded" dari batas kirim email gratis Supabase.
+  const hasServiceRole =
+    process.env.SUPABASE_SERVICE_ROLE_KEY &&
+    process.env.SUPABASE_SERVICE_ROLE_KEY !== 'placeholder-key';
+
+  if (hasServiceRole) {
+    const { data: adminData, error: adminError } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { full_name: full_name || '' },
+    });
+
+    if (adminError) {
+      return res.status(adminError.status || 400).json({ error: adminError.message });
+    }
+
+    // Login otomatis untuk menghasilkan session & access_token aktif
+    const { data: sessionData, error: loginError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (loginError) {
+      return res.status(200).json({
+        user: adminData.user,
+        session: null,
+        message: 'Registered successfully. Please login with your credentials.',
+      });
+    }
+
+    return res.status(200).json({
+      user: sessionData.user,
+      session: sessionData.session,
+      message: 'Registered and logged in.',
+    });
+  }
+
+  // Fallback standar ke signUp jika service role tidak tersedia
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
