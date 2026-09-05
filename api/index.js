@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const app = express();
 const supabaseAdmin = require('../lib/supabaseAdmin');
@@ -62,9 +63,10 @@ app.use('/api/dashboard', require('../routes/dashboard'));
 app.use('/api/transactions', require('../routes/transactions'));
 app.use('/api/export', require('../routes/export'));
 
-// Fallback 404 for unknown API routes
-app.use('/api/*', (req, res) => {
+// Fallback 404 for unknown routes (compatible with Express 5)
+app.use((req, res) => {
   res.status(404).json({ error: 'Endpoint not found' });
 });
 
 module.exports = app;
+
