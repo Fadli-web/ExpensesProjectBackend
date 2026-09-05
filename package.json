@@ -1,0 +1,13 @@
+{
+  "name": "expense-tracker-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "@google/generative-ai": "^0.21.0"
+  }
+}

@@ -1,0 +1,17 @@
+name: Keep Supabase Alive
+
+on:
+  schedule:
+    # Setiap 3 hari sekali jam 03:00 UTC. Supabase free tier pause project
+    # setelah ~7 hari tanpa aktivitas, jadi interval 3 hari memberi margin aman.
+    - cron: '0 3 */3 * *'
+  workflow_dispatch: {}   # boleh dijalankan manual dari tab "Actions" di GitHub
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend keep-alive endpoint
+        run: |
+          curl -sS -f "${{ secrets.BACKEND_URL }}/api/keep-alive" \
+            -H "x-keep-alive-secret: ${{ secrets.KEEP_ALIVE_SECRET }}"
