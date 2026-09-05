@@ -1,88 +1,78 @@
-import { applyCors } from '../../lib/cors.js';
-import { requireUser } from '../../lib/auth.js';
-import { supabaseAdmin } from '../../lib/db.js';
-import { toCsv } from '../../lib/csv.js';
+const { requireAuth, applyCors } = require('../../middleware/auth');
 
-function toISO(d) {
-  return d.toISOString().slice(0, 10);
+function csvEscape(val) {
+  if (val === null || val === undefined) return '';
+  const s = String(val);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-function presetRange(preset) {
+function periodToRange(period, custom_start, custom_end) {
   const now = new Date();
-  if (preset === 'this_month') {
-    return [
-      toISO(new Date(now.getFullYear(), now.getMonth(), 1)),
-      toISO(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
-    ];
+  const pad = (n) => String(n).padStart(2, '0');
+  const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+  if (period === 'last_month') {
+    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const end = new Date(now.getFullYear(), now.getMonth(), 0);
+    return { start: fmt(start), end: fmt(end) };
   }
-  if (preset === 'last_month') {
-    return [
-      toISO(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
-      toISO(new Date(now.getFullYear(), now.getMonth(), 0)),
-    ];
+  if (period === 'this_year') {
+    return { start: `${now.getFullYear()}-01-01`, end: fmt(now) };
   }
-  if (preset === 'this_year') {
-    return [
-      toISO(new Date(now.getFullYear(), 0, 1)),
-      toISO(new Date(now.getFullYear(), 11, 31)),
-    ];
+  if (period === 'custom') {
+    return { start: custom_start, end: custom_end };
   }
-  return [null, null];
+  // default: this_month
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  return { start: fmt(start), end: fmt(now) };
 }
 
-// GET /api/export/csv?preset=this_month|last_month|this_year|custom&from=&to=
-export default async function handler(req, res) {
+// GET /api/export/csv?period=this_month|last_month|this_year|custom&start=YYYY-MM-DD&end=YYYY-MM-DD
+// Streams a CSV download of the user's transactions in the chosen period.
+module.exports = async (req, res) => {
   if (applyCors(req, res)) return;
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
-  const auth = await requireUser(req, res);
+  const auth = await requireAuth(req, res);
   if (!auth) return;
-  const { user } = auth;
+  const { user, supabase } = auth;
 
-  if (req.method !== 'GET') {
-    res.setHeader('Allow', 'GET, OPTIONS');
-    return res.status(405).json({ error: 'Method not allowed' });
+  const { period = 'this_month', start: customStart, end: customEnd } = req.query;
+  const { start, end } = periodToRange(period, customStart, customEnd);
+
+  if (!start || !end) {
+    return res.status(400).json({ error: 'start and end are required for period=custom' });
   }
 
-  try {
-    let { from, to, preset } = req.query;
-    if (preset && preset !== 'custom') {
-      [from, to] = presetRange(preset);
-    }
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('transaction_date, merchant, category, amount, payment_method, notes, receipt_path')
+    .eq('user_id', user.id)
+    .gte('transaction_date', start)
+    .lte('transaction_date', end)
+    .order('transaction_date', { ascending: true });
 
-    let query = supabaseAdmin
-      .from('transactions')
-      .select('transaction_date, merchant, category, amount, notes, payment_method')
-      .eq('user_id', user.id)
-      .order('transaction_date', { ascending: true });
+  if (error) return res.status(400).json({ error: error.message });
 
-    if (from) query = query.gte('transaction_date', from);
-    if (to) query = query.lte('transaction_date', to);
+  const header = ['Tanggal', 'Nama Toko', 'Kategori', 'Nominal', 'Metode Pembayaran', 'Catatan', 'Path Struk'];
+  const lines = [header.join(',')];
 
-    const { data, error } = await query;
-
-    if (error) {
-      return res.status(500).json({ error: 'Gagal mengekspor data: ' + error.message });
-    }
-
-    const rows = (data || []).map((r) => ({
-      Tanggal: typeof r.transaction_date === 'string'
-        ? r.transaction_date.slice(0, 10)
-        : new Date(r.transaction_date).toISOString().slice(0, 10),
-      'Nama Toko': r.merchant,
-      Kategori: r.category,
-      Nominal: r.amount,
-      'Metode Bayar': r.payment_method || '',
-      Catatan: r.notes || '',
-    }));
-
-    const csv = toCsv(rows);
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="laporan-keuangan-${from || 'all'}_${to || 'all'}.csv"`
-    );
-    return res.status(200).send(csv);
-  } catch (err) {
-    return res.status(500).json({ error: 'Gagal mengekspor data: ' + err.message });
+  for (const t of data) {
+    lines.push([
+      csvEscape(t.transaction_date),
+      csvEscape(t.merchant),
+      csvEscape(t.category),
+      csvEscape(t.amount),
+      csvEscape(t.payment_method),
+      csvEscape(t.notes),
+      csvEscape(t.receipt_path),
+    ].join(','));
   }
-}
+
+  const csv = lines.join('\n');
+  const filename = `transaksi_${start}_sd_${end}.csv`;
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  return res.status(200).send(csv);
+};

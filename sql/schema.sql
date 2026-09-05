@@ -1,129 +1,155 @@
--- ================================================================
--- EXPENSE TRACKER - Supabase SQL Schema
--- Jalankan di: Supabase Dashboard > SQL Editor > New Query
--- ================================================================
+-- ============================================================
+-- Expense Notes — Supabase schema
+-- Run this in Supabase Studio: SQL Editor > New query > Run
+-- ============================================================
 
--- ----------------------------------------------------------------
--- TABEL: profiles
--- Menyimpan data profil user yang extend dari Supabase Auth
--- ----------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS public.profiles (
-  id         UUID        PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  name       TEXT        NOT NULL DEFAULT '',
-  avatar_url TEXT        DEFAULT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+-- Needed for gen_random_uuid()
+create extension if not exists pgcrypto;
+
+-- ------------------------------------------------------------
+-- 1. PROFILES
+-- One row per auth user. This is what makes profile data
+-- (name, avatar) permanent and identical across every device,
+-- since it's keyed to the permanent auth.users.id, not to a
+-- browser or local device.
+-- ------------------------------------------------------------
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  full_name text,
+  avatar_url text,
+  avatar_path text, -- storage object path, so we can delete the old file on replace
+  updated_at timestamptz not null default now()
 );
 
--- ----------------------------------------------------------------
--- TABEL: transactions
--- Menyimpan semua transaksi/pengeluaran user
--- ----------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS public.transactions (
-  id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id          UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  merchant         TEXT        NOT NULL,
-  amount           NUMERIC     NOT NULL,
-  category         TEXT        NOT NULL DEFAULT 'Lainnya',
-  transaction_date DATE        NOT NULL DEFAULT CURRENT_DATE,
-  payment_method   TEXT        DEFAULT NULL,
-  notes            TEXT        DEFAULT NULL,
-  items            TEXT[]      DEFAULT '{}',
-  receipt_image    TEXT        DEFAULT NULL,
-  created_at       TIMESTAMPTZ DEFAULT NOW(),
-  updated_at       TIMESTAMPTZ DEFAULT NOW()
+alter table public.profiles enable row level security;
+
+create policy "profiles_select_own" on public.profiles
+  for select using (auth.uid() = id);
+
+create policy "profiles_update_own" on public.profiles
+  for update using (auth.uid() = id);
+
+create policy "profiles_insert_own" on public.profiles
+  for insert with check (auth.uid() = id);
+
+-- Auto-create a profile row the moment a new auth user is created
+-- (covers both email/password signup and Google OAuth signup).
+create or replace function public.handle_new_user()
+returns trigger as $$
+begin
+  insert into public.profiles (id, full_name, avatar_url)
+  values (
+    new.id,
+    coalesce(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'name', ''),
+    new.raw_user_meta_data->>'avatar_url'
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
+
+-- ------------------------------------------------------------
+-- 2. TRANSACTIONS
+-- ------------------------------------------------------------
+create table if not exists public.transactions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  merchant text not null,
+  amount numeric(14,2) not null,
+  category text not null default 'Lainnya',
+  payment_method text,
+  transaction_date date not null default current_date,
+  notes text,
+  items jsonb,              -- parsed line items from OCR, optional
+  receipt_path text,        -- path inside the receipts storage bucket
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
--- Index untuk performa query filtering
-CREATE INDEX IF NOT EXISTS idx_transactions_user_id        ON public.transactions(user_id);
-CREATE INDEX IF NOT EXISTS idx_transactions_user_date      ON public.transactions(user_id, transaction_date DESC);
-CREATE INDEX IF NOT EXISTS idx_transactions_user_category  ON public.transactions(user_id, category);
-CREATE INDEX IF NOT EXISTS idx_transactions_user_merchant  ON public.transactions(user_id, merchant);
+create index if not exists idx_transactions_user_date
+  on public.transactions (user_id, transaction_date desc);
 
--- ----------------------------------------------------------------
--- ROW LEVEL SECURITY (RLS)
--- User hanya bisa mengakses data milik mereka sendiri
--- ----------------------------------------------------------------
-ALTER TABLE public.profiles     ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+create index if not exists idx_transactions_user_category
+  on public.transactions (user_id, category);
 
--- Policies untuk tabel profiles
-DROP POLICY IF EXISTS "profiles_select" ON public.profiles;
-DROP POLICY IF EXISTS "profiles_insert" ON public.profiles;
-DROP POLICY IF EXISTS "profiles_update" ON public.profiles;
+alter table public.transactions enable row level security;
 
-CREATE POLICY "profiles_select" ON public.profiles
-  FOR SELECT USING (auth.uid() = id);
+create policy "transactions_select_own" on public.transactions
+  for select using (auth.uid() = user_id);
 
-CREATE POLICY "profiles_insert" ON public.profiles
-  FOR INSERT WITH CHECK (auth.uid() = id);
+create policy "transactions_insert_own" on public.transactions
+  for insert with check (auth.uid() = user_id);
 
-CREATE POLICY "profiles_update" ON public.profiles
-  FOR UPDATE USING (auth.uid() = id);
+create policy "transactions_update_own" on public.transactions
+  for update using (auth.uid() = user_id);
 
--- Policies untuk tabel transactions
-DROP POLICY IF EXISTS "transactions_select" ON public.transactions;
-DROP POLICY IF EXISTS "transactions_insert" ON public.transactions;
-DROP POLICY IF EXISTS "transactions_update" ON public.transactions;
-DROP POLICY IF EXISTS "transactions_delete" ON public.transactions;
+create policy "transactions_delete_own" on public.transactions
+  for delete using (auth.uid() = user_id);
 
-CREATE POLICY "transactions_select" ON public.transactions
-  FOR SELECT USING (auth.uid() = user_id);
+-- keep updated_at fresh
+create or replace function public.set_updated_at()
+returns trigger as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$ language plpgsql;
 
-CREATE POLICY "transactions_insert" ON public.transactions
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
+drop trigger if exists trg_transactions_updated_at on public.transactions;
+create trigger trg_transactions_updated_at
+  before update on public.transactions
+  for each row execute procedure public.set_updated_at();
 
-CREATE POLICY "transactions_update" ON public.transactions
-  FOR UPDATE USING (auth.uid() = user_id);
+-- ============================================================
+-- 3. STORAGE BUCKETS
+-- Create these once in Supabase Dashboard > Storage
+--   - "avatars"  -> keep PUBLIC (so avatar_url can be a plain public URL)
+--   - "receipts" -> keep PRIVATE (accessed only via short-lived signed URLs)
+-- Then run the policies below.
+-- ============================================================
 
-CREATE POLICY "transactions_delete" ON public.transactions
-  FOR DELETE USING (auth.uid() = user_id);
+-- Avatars: public read, but a user may only write/delete inside their own
+-- folder, e.g. avatars/<user_id>/avatar.jpg
+create policy "avatar_public_read"
+on storage.objects for select
+using ( bucket_id = 'avatars' );
 
--- ----------------------------------------------------------------
--- SERVICE ROLE POLICIES (untuk backend menggunakan service_role key)
--- Dibutuhkan agar backend bisa insert profile saat register
--- ----------------------------------------------------------------
-DROP POLICY IF EXISTS "profiles_service_insert" ON public.profiles;
+create policy "avatar_owner_write"
+on storage.objects for insert
+with check (
+  bucket_id = 'avatars'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
 
-CREATE POLICY "profiles_service_insert" ON public.profiles
-  FOR ALL USING (true)
-  WITH CHECK (true);
+create policy "avatar_owner_update"
+on storage.objects for update
+using (
+  bucket_id = 'avatars'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
 
--- CATATAN: Policy di atas memungkinkan service_role bypass RLS.
--- Service role key HARUS dijaga rahasia dan hanya digunakan di backend.
+create policy "avatar_owner_delete"
+on storage.objects for delete
+using (
+  bucket_id = 'avatars'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
 
--- ----------------------------------------------------------------
--- TRIGGER: Auto-update updated_at
--- ----------------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.handle_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS set_profiles_updated_at ON public.profiles;
-CREATE TRIGGER set_profiles_updated_at
-  BEFORE UPDATE ON public.profiles
-  FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
-
-DROP TRIGGER IF EXISTS set_transactions_updated_at ON public.transactions;
-CREATE TRIGGER set_transactions_updated_at
-  BEFORE UPDATE ON public.transactions
-  FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
-
--- ----------------------------------------------------------------
--- STORAGE: Bucket untuk avatar foto profil
--- Jalankan ini ATAU buat manual di Dashboard > Storage > New Bucket
--- Nama bucket: "avatars", set Public = true
--- ----------------------------------------------------------------
--- INSERT INTO storage.buckets (id, name, public)
--- VALUES ('avatars', 'avatars', true)
--- ON CONFLICT (id) DO NOTHING;
-
--- ================================================================
--- SELESAI! Verifikasi dengan query berikut:
--- SELECT table_name FROM information_schema.tables
--- WHERE table_schema = 'public';
--- ================================================================
+-- Receipts: fully private, only the owner (folder = their user id) can
+-- read/write/delete their own receipt images. Signed URLs are issued
+-- server-side with the service role key.
+create policy "receipt_owner_all"
+on storage.objects for all
+using (
+  bucket_id = 'receipts'
+  and (storage.foldername(name))[1] = auth.uid()::text
+)
+with check (
+  bucket_id = 'receipts'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);

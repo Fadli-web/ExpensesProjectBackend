@@ -1,13 +1,14 @@
 {
   "name": "expense-tracker-backend",
   "version": "1.0.0",
-  "private": true,
-  "type": "module",
-  "engines": {
-    "node": "20.x"
+  "description": "Backend API (Vercel Serverless Functions) for AI Expense Notes app using Supabase",
+  "main": "index.js",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vercel dev"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
-    "@supabase/supabase-js": "^2.45.4"
+    "@supabase/supabase-js": "^2.45.4",
+    "formidable": "^3.5.1"
   }
 }

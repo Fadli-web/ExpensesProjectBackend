@@ -1,100 +1,81 @@
-import { applyCors } from '../../lib/cors.js';
-import { requireUser } from '../../lib/auth.js';
-import { supabaseAdmin } from '../../lib/db.js';
+const { requireAuth, applyCors } = require('../../middleware/auth');
 
-export default async function handler(req, res) {
+const RECEIPT_BUCKET = process.env.RECEIPT_BUCKET || 'receipts';
+
+// GET    /api/transactions/:id
+// PUT    /api/transactions/:id   (edit amount/category/etc.)
+// DELETE /api/transactions/:id   (also removes the linked receipt file)
+module.exports = async (req, res) => {
   if (applyCors(req, res)) return;
 
-  const auth = await requireUser(req, res);
+  const auth = await requireAuth(req, res);
   if (!auth) return;
-  const { user } = auth;
+  const { user, supabase } = auth;
   const { id } = req.query;
 
-  if (req.method === 'GET') return handleGet(res, user, id);
-  if (req.method === 'PUT' || req.method === 'PATCH') return handleUpdate(req, res, user, id);
-  if (req.method === 'DELETE') return handleDelete(res, user, id);
-
-  res.setHeader('Allow', 'GET, PUT, PATCH, DELETE, OPTIONS');
-  return res.status(405).json({ error: 'Method not allowed' });
-}
-
-async function handleGet(res, user, id) {
-  try {
-    const { data, error } = await supabaseAdmin
+  if (req.method === 'GET') {
+    const { data, error } = await supabase
       .from('transactions')
       .select('*')
       .eq('id', id)
       .eq('user_id', user.id)
       .single();
 
-    if (error || !data) {
-      return res.status(404).json({ error: 'Transaksi tidak ditemukan' });
+    if (error) return res.status(404).json({ error: 'Transaction not found' });
+
+    let receipt_url = null;
+    if (data.receipt_path) {
+      const { data: signed } = await supabase.storage
+        .from(RECEIPT_BUCKET)
+        .createSignedUrl(data.receipt_path, 60 * 10);
+      receipt_url = signed?.signedUrl || null;
     }
 
-    return res.status(200).json({ data });
-  } catch (err) {
-    return res.status(500).json({ error: 'Gagal mengambil transaksi: ' + err.message });
+    return res.status(200).json({ data: { ...data, receipt_url } });
   }
-}
 
-async function handleUpdate(req, res, user, id) {
-  try {
-    const body = req.body || {};
-    const allowed = [
-      'merchant',
-      'amount',
-      'category',
-      'transaction_date',
-      'payment_method',
-      'notes',
-      'items',
-      'receipt_image',
-    ];
-
-    const patch = {};
+  if (req.method === 'PUT') {
+    const allowed = ['merchant', 'amount', 'category', 'payment_method', 'transaction_date', 'notes', 'items'];
+    const updates = {};
     for (const key of allowed) {
-      if (key in body) patch[key] = body[key];
+      if (req.body?.[key] !== undefined) updates[key] = req.body[key];
     }
-    if ('receipt_path' in body && !('receipt_image' in patch)) {
-      patch.receipt_image = body.receipt_path;
-    }
+    updates.updated_at = new Date().toISOString();
 
-    if (Object.keys(patch).length === 0) {
-      return res.status(400).json({ error: 'Tidak ada field valid untuk diupdate' });
-    }
-
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabase
       .from('transactions')
-      .update(patch)
+      .update(updates)
       .eq('id', id)
       .eq('user_id', user.id)
       .select()
       .single();
 
-    if (error || !data) {
-      return res.status(404).json({ error: 'Transaksi tidak ditemukan' });
-    }
-
+    if (error) return res.status(400).json({ error: error.message });
     return res.status(200).json({ data });
-  } catch (err) {
-    return res.status(500).json({ error: 'Gagal mengupdate transaksi: ' + err.message });
   }
-}
 
-async function handleDelete(res, user, id) {
-  try {
-    const { error } = await supabaseAdmin
+  if (req.method === 'DELETE') {
+    const { data: existing } = await supabase
+      .from('transactions')
+      .select('receipt_path')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
+
+    const { error } = await supabase
       .from('transactions')
       .delete()
       .eq('id', id)
       .eq('user_id', user.id);
 
-    if (error) {
-      return res.status(500).json({ error: 'Gagal menghapus transaksi: ' + error.message });
+    if (error) return res.status(400).json({ error: error.message });
+
+    if (existing?.receipt_path) {
+      await supabase.storage.from(RECEIPT_BUCKET).remove([existing.receipt_path]);
     }
 
-    return res.status(200).json({ success: true, message: 'Transaksi berhasil dihapus' });
-  } catch (err) {
-    return res.status(500).json({ error: 'Gagal menghapus transaksi: ' + err.message });
+    return res.status(200).json({ message: 'Transaction deleted.' });
   }
-}
+
+  return res.status(405).json({ error: 'Method not allowed' });
+};
