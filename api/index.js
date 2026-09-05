@@ -62,6 +62,7 @@ app.use('/api/receipts', require('../routes/receipts'));
 app.use('/api/dashboard', require('../routes/dashboard'));
 app.use('/api/transactions', require('../routes/transactions'));
 app.use('/api/export', require('../routes/export'));
+app.use('/api/insights', require('../routes/insights'));
 
 // Fallback 404 for unknown routes (compatible with Express 5)
 app.use((req, res) => {
