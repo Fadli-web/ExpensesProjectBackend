@@ -1,0 +1,39 @@
+name: Supabase Keep Alive
+
+on:
+  schedule:
+    # Runs every 3 days at 00:00 UTC (well within the 7-day inactivity limit)
+    - cron: '0 0 */3 * *'
+  workflow_dispatch: # Allows manual trigger anytime from GitHub Actions tab
+
+jobs:
+  keep-alive:
+    name: Prevent Supabase Pause
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ping Supabase Database & Backend Health
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://pvalyovfpngfeavzxwct.supabase.co' }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          BACKEND_URL: ${{ secrets.BACKEND_URL || 'https://expenses-note-backend.vercel.app' }}
+        run: |
+          echo "=== 1. Pinging Vercel Backend Health Endpoint ==="
+          curl -s -f -X GET "${BACKEND_URL}/api/health" || echo "Backend ping finished with non-zero exit or pending deployment"
+
+          echo ""
+          echo "=== 2. Pinging Supabase REST API Directly ==="
+          if [ -n "$SUPABASE_ANON_KEY" ]; then
+            RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+              -X GET "${SUPABASE_URL}/rest/v1/profiles?select=id&limit=1" \
+              -H "apikey: ${SUPABASE_ANON_KEY}" \
+              -H "Authorization: Bearer ${SUPABASE_ANON_KEY}")
+            echo "$RESPONSE"
+          else
+            echo "Direct Supabase ping via REST skipped (SUPABASE_ANON_KEY not set in GitHub Secrets)."
+            echo "Pinging public Supabase root endpoint..."
+            curl -s -I "${SUPABASE_URL}" | head -n 5
+          fi
+
+          echo ""
+          echo "=== Keep-alive ping executed successfully at $(date -u) ==="
