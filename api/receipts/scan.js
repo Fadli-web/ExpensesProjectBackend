@@ -1,6 +1,5 @@
 const { requireAuth, applyCors } = require('../../middleware/auth');
-
-const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const CATEGORIES = [
   'Belanja Harian', 'Transportasi', 'Makanan & Minuman', 'Tagihan & Utilitas',
@@ -23,10 +22,9 @@ Jika sebuah field tidak terbaca, isi dengan null (kecuali items: pakai array kos
 // POST /api/receipts/scan
 // body: { image_base64: string, media_type: "image/jpeg" | "image/png" | "image/webp" }
 //
-// This is a *preview* step: it does NOT save anything. The frontend shows
-// the auto-filled form next to the receipt photo (per the "Interactive
-// Receipt Previewer" spec) and only calls POST /api/transactions once the
-// user confirms the data is correct.
+// Ini adalah langkah *preview*: TIDAK menyimpan apapun. Frontend menampilkan
+// form yang sudah terisi otomatis dan baru menyimpan lewat POST /api/transactions
+// setelah user mengkonfirmasi datanya benar.
 module.exports = async (req, res) => {
   if (applyCors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -36,44 +34,36 @@ module.exports = async (req, res) => {
 
   const { image_base64, media_type } = req.body || {};
   if (!image_base64) return res.status(400).json({ error: 'image_base64 is required' });
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return res.status(500).json({ error: 'Server is missing ANTHROPIC_API_KEY' });
+
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(500).json({ error: 'Server is missing GEMINI_API_KEY' });
   }
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 1024,
-        system: SYSTEM_PROMPT,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image',
-                source: { type: 'base64', media_type: media_type || 'image/jpeg', data: image_base64 },
-              },
-              { type: 'text', text: 'Baca struk ini dan kembalikan JSON sesuai skema.' },
-            ],
-          },
-        ],
-      }),
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({
+      model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
     });
 
-    const data = await response.json();
-    if (!response.ok) {
-      return res.status(502).json({ error: data?.error?.message || 'AI vision request failed' });
+    // Hapus prefix data URL jika ada (ambil hanya base64 murni)
+    let base64Data = image_base64;
+    if (base64Data.includes(',')) {
+      base64Data = base64Data.split(',')[1];
     }
 
-    const textBlock = (data.content || []).find((c) => c.type === 'text');
-    const raw = (textBlock?.text || '').replace(/```json|```/g, '').trim();
+    const mimeType = media_type || 'image/jpeg';
+
+    const result = await model.generateContent([
+      SYSTEM_PROMPT,
+      {
+        inlineData: {
+          mimeType,
+          data: base64Data,
+        },
+      },
+    ]);
+
+    const raw = result.response.text().replace(/```json|```/g, '').trim();
 
     let parsed;
     try {
