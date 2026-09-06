@@ -22,6 +22,22 @@ function formatRupiah(num) {
 }
 
 /**
+ * Strip markdown formatting characters from AI response text
+ * Removes: **bold**, ##heading, *italic*, --- dividers
+ */
+function stripMarkdown(text) {
+  if (!text || typeof text !== 'string') return text;
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '$1')   // **bold** → bold
+    .replace(/\*(.+?)\*/g, '$1')        // *italic* → italic
+    .replace(/^#{1,6}\s*/gm, '')        // ## heading → heading
+    .replace(/^---+$/gm, '')            // --- dividers → remove
+    .replace(/^\*\s+/gm, '• ')          // * list item → • list item
+    .replace(/\n{3,}/g, '\n\n')         // triple+ newlines → double
+    .trim();
+}
+
+/**
  * Fetch and aggregate financial data for a user
  */
 async function getUserFinancialContext(userId, userFullName) {
@@ -315,6 +331,12 @@ Berdasarkan data di atas, buatlah analisis kesehatan keuangan otomatis dalam for
       };
     }
 
+    // Strip markdown from AI-generated text fields before sending to frontend
+    if (parsed.summary) parsed.summary = stripMarkdown(parsed.summary);
+    if (Array.isArray(parsed.key_recommendations)) {
+      parsed.key_recommendations = parsed.key_recommendations.map(stripMarkdown);
+    }
+
     return res.status(200).json({
       ...parsed,
       context: financialContext,
@@ -379,14 +401,14 @@ router.post('/ask', async (req, res) => {
     if (isBlatantOffTopic) {
       return res.status(200).json({
         is_financial: false,
-        reply: `Maaf, saya adalah **Asisten AI Keuangan ExpendNote** yang khusus dirancang untuk menganalisis keuangan pribadi, struk belanja, dan perencanaan finansial Anda berdasarkan data transaksi yang tercatat.
+        reply: stripMarkdown(`Maaf, saya adalah Asisten AI Keuangan ExpendNote yang khusus dirancang untuk menganalisis keuangan pribadi, struk belanja, dan perencanaan finansial Anda berdasarkan data transaksi yang tercatat.
 
 Saya tidak dapat menjawab pertanyaan di luar topik keuangan (seperti resep makanan, hiburan, atau pertanyaan umum lainnya).
 
 Silakan tanyakan hal-hal seputar pengeluaran Anda, contohnya:
-• *"Berapa total pengeluaran saya dan apa yang paling boros?"*
-• *"Berapa banyak uang yang saya keluarkan untuk belanja di merchant terbesar saya?"*
-• *"Berikan tips berhemat berdasarkan riwayat transaksi saya."*`,
+• "Berapa total pengeluaran saya dan apa yang paling boros?"
+• "Berapa banyak uang yang saya keluarkan untuk belanja di merchant terbesar saya?"
+• "Berikan tips berhemat berdasarkan riwayat transaksi saya."`),
       });
     }
 
@@ -426,7 +448,8 @@ ${financialContext.recentTransactions.map((tx) => `- ${tx.date} | ${tx.merchant}
       ],
     });
 
-    const reply = await callGemini(contents, FINANCIAL_ADVISOR_SYSTEM_PROMPT);
+    const rawReply = await callGemini(contents, FINANCIAL_ADVISOR_SYSTEM_PROMPT);
+    const reply = stripMarkdown(rawReply);
 
     // Detect if model refused due to off-topic
     const isRefusal =

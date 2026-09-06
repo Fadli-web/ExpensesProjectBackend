@@ -16,6 +16,12 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: 'email and password are required' });
   }
 
+  // Validasi format email: harus ada domain dan TLD minimal 2 karakter (misal .com, .id)
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  if (!emailRegex.test(String(email).trim())) {
+    return res.status(400).json({ error: 'Format email tidak valid. Gunakan email lengkap seperti nama@gmail.com' });
+  }
+
   if (typeof password !== 'string' || password.length < 6) {
     return res.status(400).json({ error: 'Password should be at least 6 characters' });
   }
@@ -83,6 +89,12 @@ router.post('/login', async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) {
     return res.status(400).json({ error: 'email and password are required' });
+  }
+
+  // Validasi format email di sisi server
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  if (!emailRegex.test(String(email).trim())) {
+    return res.status(400).json({ error: 'Format email tidak valid. Gunakan email lengkap seperti nama@gmail.com' });
   }
 
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
