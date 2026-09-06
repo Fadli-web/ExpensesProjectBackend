@@ -27,11 +27,27 @@ router.get('/', async (req, res) => {
       return res.status(400).json({ error: error.message });
     }
 
+    const meta = user.user_metadata || {};
+    const fullName = profile?.full_name || meta.full_name || meta.name || user.email?.split('@')[0] || '';
+    const avatarUrl = profile?.avatar_url || meta.avatar_url || meta.picture || null;
+
+    if (!profile) {
+      await supabaseAdmin
+        .from('profiles')
+        .upsert({
+          id: user.id,
+          full_name: fullName,
+          avatar_url: avatarUrl,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' })
+        .catch(() => {});
+    }
+
     return res.status(200).json({
       id: user.id,
       email: user.email,
-      full_name: profile?.full_name || '',
-      avatar_url: profile?.avatar_url || null,
+      full_name: fullName,
+      avatar_url: avatarUrl,
       updated_at: profile?.updated_at || new Date().toISOString(),
     });
   } catch (err) {
